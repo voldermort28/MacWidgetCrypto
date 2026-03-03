@@ -12,15 +12,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Check Available Xcodes
+    - name: Show Available Xcodes
       run: ls /Applications | grep Xcode
 
     - name: Build macOS App & Widget
       run: |
-        # Tự động tìm file dự án
+        # Tự động tìm file dự án .xcodeproj
         PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
+        echo "Building project: $PROJECT_FILE"
         
-        # Build với thiết lập bỏ qua ký tên
+        # Build và bỏ qua bước ký tên (Signing)
         xcodebuild -project "$PROJECT_FILE" \
           -alltargets \
           -configuration Release \
@@ -29,3 +30,9 @@ jobs:
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
           build
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Crypto-Widget-App
+        path: build/Build/Products/Release/*.app
