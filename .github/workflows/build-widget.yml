@@ -1,9 +1,7 @@
-name: Build macOS Widget
+name: Build macOS Crypto Widget
 
 on:
   push:
-    branches: [ "main" ] # Hoặc branch bạn đang dùng
-  pull_request:
     branches: [ "main" ]
 
 jobs:
@@ -14,13 +12,20 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: List files (Để kiểm tra tên file dự án)
+      run: ls -R
+
     - name: Set up Xcode version
       run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
 
-    - name: Build Widget (Signing Disabled)
+    - name: Build macOS App & Widget
       run: |
-        xcodebuild -project "MacWidgetCrypto.xcodeproj" \
-          -scheme "MacWidgetCrypto" \
+        # Tự động tìm file .xcodeproj nếu bạn không nhớ tên chính xác
+        PROJECT_FILE=$(ls -d *.xcodeproj | head -n 1)
+        
+        # Build dự án (Bỏ qua ký tên để build online thành công)
+        xcodebuild -project "$PROJECT_FILE" \
+          -alltargets \
           -configuration Release \
           -destination "platform=macOS" \
           CODE_SIGNING_ALLOWED=NO \
