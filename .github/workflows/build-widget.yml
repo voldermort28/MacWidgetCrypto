@@ -1,0 +1,41 @@
+name: Build macOS Widget
+
+on:
+  push:
+    branches: [ "main" ] # Hoặc branch bạn đang dùng
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Xcode version
+      run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
+
+    - name: Build Widget (Signing Disabled)
+      run: |
+        xcodebuild -project "MacWidgetCrypto.xcodeproj" \
+          -scheme "MacWidgetCrypto" \
+          -configuration Release \
+          -destination "platform=macOS" \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          build
+
+    - name: Compress App for Download
+      run: |
+        # Tìm file .app trong thư mục Build và nén lại
+        cd build/Build/Products/Release/
+        zip -r macOS-Widget.zip *.app
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: macOS-Widget-Build
+        path: build/Build/Products/Release/macOS-Widget.zip
