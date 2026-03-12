@@ -22,7 +22,7 @@ targets:
       CODE_SIGNING_ALLOWED: NO
 
   CryptoWidget:
-    type: app-extension.rocket-widget
+    type: app-extension
     platform: macOS
     deploymentTarget: "14.0"
     sources:
