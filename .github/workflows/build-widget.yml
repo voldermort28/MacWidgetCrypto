@@ -21,14 +21,36 @@ jobs:
 
     - name: Build macOS App & Widget
       run: |
-        xcodebuild -project MacWidgetCrypto.xcodeproj \
-          -scheme MacWidgetCrypto \
-          -configuration Release \
-          -destination "platform=macOS" \
-          CODE_SIGNING_ALLOWED=NO \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGN_IDENTITY="" \
-          build
+        # Tìm file .xcworkspace hoặc .xcodeproj ở bất cứ đâu trong repo
+        WORKSPACE_FILE=$(find . -name "*.xcworkspace" | head -n 1)
+        PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
+        
+        if [ -n "$WORKSPACE_FILE" ]; then
+          echo "Building Workspace: $WORKSPACE_FILE"
+          xcodebuild -workspace "$WORKSPACE_FILE" \
+            -scheme "MacWidgetCrypto" \
+            -configuration Release \
+            -derivedDataPath build \
+            -destination "platform=macOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+        elif [ -n "$PROJECT_FILE" ]; then
+          echo "Building Project: $PROJECT_FILE"
+          xcodebuild -project "$PROJECT_FILE" \
+            -alltargets \
+            -configuration Release \
+            -derivedDataPath build \
+            -destination "platform=macOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+        else
+          echo "Error: Không tìm thấy file .xcodeproj hoặc .xcworkspace nào!"
+          exit 1
+        fi
 
     - name: Zip App
       run: |
