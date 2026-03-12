@@ -1,0 +1,40 @@
+name: MacWidgetCrypto
+options:
+  bundleIdPrefix: com.voldermort28
+targets:
+  MacWidgetCrypto:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: MacWidgetCrypto/App
+      - path: MacWidgetCrypto/Shared
+    info:
+      path: MacWidgetCrypto/App/Info.plist
+      properties:
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.voldermort28.MacWidgetCrypto
+      # Cho phép chia sẻ dữ liệu qua App Group
+      DEVELOPMENT_TEAM: "" # Để trống vì không có team ID
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGNING_REQUIRED: NO
+      CODE_SIGNING_ALLOWED: NO
+
+  CryptoWidget:
+    type: app-extension.rocket-widget
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: MacWidgetCrypto/Widget
+      - path: MacWidgetCrypto/Shared
+    info:
+      path: MacWidgetCrypto/Widget/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.voldermort28.MacWidgetCrypto.CryptoWidget
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGNING_REQUIRED: NO
+      CODE_SIGNING_ALLOWED: NO

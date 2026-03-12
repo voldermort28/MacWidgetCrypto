@@ -3,6 +3,7 @@ name: Build macOS Crypto Widget
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -12,42 +13,30 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Show Available Xcodes
-      run: ls /Applications | grep Xcode
+    - name: Install XcodeGen
+      run: brew install xcodegen
+
+    - name: Generate Xcode Project
+      run: xcodegen generate
 
     - name: Build macOS App & Widget
       run: |
-        # Tìm file .xcworkspace hoặc .xcodeproj ở bất cứ đâu trong repo
-        WORKSPACE_FILE=$(find . -name "*.xcworkspace" | head -n 1)
-        PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
-        
-        if [ -n "$WORKSPACE_FILE" ]; then
-          echo "Building Workspace: $WORKSPACE_FILE"
-          xcodebuild -workspace "$WORKSPACE_FILE" \
-            -scheme "MacWidgetCrypto" \
-            -configuration Release \
-            -destination "platform=macOS" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-        elif [ -n "$PROJECT_FILE" ]; then
-          echo "Building Project: $PROJECT_FILE"
-          xcodebuild -project "$PROJECT_FILE" \
-            -alltargets \
-            -configuration Release \
-            -destination "platform=macOS" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-        else
-          echo "Error: Không tìm thấy file .xcodeproj hoặc .xcworkspace nào!"
-          exit 1
-        fi
+        xcodebuild -project MacWidgetCrypto.xcodeproj \
+          -scheme MacWidgetCrypto \
+          -configuration Release \
+          -destination "platform=macOS" \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          build
+
+    - name: Zip App
+      run: |
+        cd build/Build/Products/Release/
+        zip -r MacWidgetCrypto.app.zip MacWidgetCrypto.app
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: Crypto-Widget-App
-        path: build/Build/Products/Release/*.app
+        path: build/Build/Products/Release/MacWidgetCrypto.app.zip
