@@ -195,6 +195,7 @@ struct MiniChart: View {
     }
 }
 
+@main
 struct CryptoWidget: Widget {
     let kind: String = "CryptoWidget"
 
