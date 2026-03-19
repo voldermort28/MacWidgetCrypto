@@ -1,4 +1,4 @@
-name: Build macOS Crypto Widget
+name: Build Crypto Widget
 
 on:
   push:
@@ -21,36 +21,43 @@ jobs:
 
     - name: Build macOS App & Widget
       run: |
-        # Tìm file .xcworkspace hoặc .xcodeproj ở bất cứ đâu trong repo
-        WORKSPACE_FILE=$(find . -name "*.xcworkspace" | head -n 1)
         PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
-        
-        if [ -n "$WORKSPACE_FILE" ]; then
-          echo "Building Workspace: $WORKSPACE_FILE"
-          xcodebuild -workspace "$WORKSPACE_FILE" \
-            -scheme "MacWidgetCrypto" \
-            -configuration Release \
-            -derivedDataPath build \
-            -destination "platform=macOS" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-        elif [ -n "$PROJECT_FILE" ]; then
-          echo "Building Project: $PROJECT_FILE"
-          xcodebuild -project "$PROJECT_FILE" \
-            -alltargets \
-            -configuration Release \
-            -derivedDataPath build \
-            -destination "platform=macOS" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-        else
-          echo "Error: Không tìm thấy file .xcodeproj hoặc .xcworkspace nào!"
+
+        if [ -z "$PROJECT_FILE" ]; then
+          echo "Error: Khong tim thay file .xcodeproj sau khi chay XcodeGen"
           exit 1
         fi
+
+        echo "Building macOS project: $PROJECT_FILE"
+        xcodebuild -project "$PROJECT_FILE" \
+          -scheme "MacWidgetCrypto" \
+          -configuration Release \
+          -derivedDataPath build \
+          -destination "generic/platform=macOS" \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          build
+
+    - name: Build iOS App & Widget
+      run: |
+        PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
+
+        if [ -z "$PROJECT_FILE" ]; then
+          echo "Error: Khong tim thay file .xcodeproj sau khi chay XcodeGen"
+          exit 1
+        fi
+
+        echo "Building iOS Simulator project: $PROJECT_FILE"
+        xcodebuild -project "$PROJECT_FILE" \
+          -scheme "MacWidgetCrypto" \
+          -configuration Release \
+          -derivedDataPath build \
+          -destination "generic/platform=iOS Simulator" \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          build
 
     - name: Zip App
       run: |

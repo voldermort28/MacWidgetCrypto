@@ -1,11 +1,14 @@
 import Foundation
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 class PortfolioManager: ObservableObject {
     static let shared = PortfolioManager()
     private let userDefaults: UserDefaults
     
-    // REPLACE THIS WITH YOUR ACTUAL APP GROUP ID
-    private let appGroupId = "group.com.yourname.MacWidgetCrypto"
+    // Enable the same App Group in the app and widget targets to share holdings on device.
+    private let appGroupId = "group.com.voldermort28.MacWidgetCrypto"
     
     @Published var holdings: [String: Double] = [:]
     
@@ -20,8 +23,16 @@ class PortfolioManager: ObservableObject {
     }
     
     func updateHolding(coinId: String, amount: Double) {
-        holdings[coinId] = amount
+        let sanitizedAmount = max(amount, 0)
+
+        if sanitizedAmount == 0 {
+            holdings.removeValue(forKey: coinId)
+        } else {
+            holdings[coinId] = sanitizedAmount
+        }
+
         saveHoldings()
+        reloadWidgetTimelines()
     }
     
     func getAmount(for coinId: String) -> Double {
@@ -36,6 +47,12 @@ class PortfolioManager: ObservableObject {
         if let saved = userDefaults.dictionary(forKey: "user_holdings") as? [String: Double] {
             self.holdings = saved
         }
+    }
+
+    private func reloadWidgetTimelines() {
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
     
     // Helper to calculate total value given current prices

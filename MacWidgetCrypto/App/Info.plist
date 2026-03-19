@@ -12,7 +12,5 @@
     <string>1.0</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
 </dict>
 </plist>

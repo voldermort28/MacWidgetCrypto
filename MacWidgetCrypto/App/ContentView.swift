@@ -23,6 +23,12 @@ struct ContentView: View {
                                     .foregroundColor(.green)
                             }
                         }
+
+                        Section(header: Text("Widget")) {
+                            Text("Sau khi chạy app, bạn có thể thêm widget từ gallery của hệ thống. Trên iOS 15.5 widget hiển thị ở Home Screen và Today View; trên macOS 14 widget hiển thị trong Notification Center hoặc trên Desktop.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
                         
                         Section(header: Text("Danh sách Coin")) {
                             ForEach(coins) { coin in
@@ -39,6 +45,9 @@ struct ContentView: View {
                 }
             }
         }
+        #if os(iOS)
+        .navigationViewStyle(.stack)
+        #endif
         .onAppear(perform: loadData)
     }
     
@@ -90,14 +99,5 @@ struct CoinRowView: View {
                 }
         }
         .padding(.vertical, 4)
-    }
-}
-
-extension Double {
-    func formattedCurrency() -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        return formatter.string(from: NSNumber(value: self)) ?? "$0.00"
     }
 }
