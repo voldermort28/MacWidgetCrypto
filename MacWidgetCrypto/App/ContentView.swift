@@ -4,50 +4,88 @@ struct ContentView: View {
     @StateObject private var portfolioManager = PortfolioManager.shared
     @State private var coins: [Coin] = []
     @State private var isLoading = false
+
+    private var snapshot: PortfolioSnapshot {
+        PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolioManager, maxCoins: 4)
+    }
+
+    private var chartAccentColor: Color {
+        guard let first = snapshot.totalHistory.first, let last = snapshot.totalHistory.last else {
+            return .green
+        }
+
+        return last >= first ? .green : .red
+    }
     
     var body: some View {
-        NavigationView {
-            VStack {
-                if isLoading {
-                    ProgressView("Đang tải dữ liệu...")
-                } else {
-                    List {
-                        Section(header: Text("Tài sản của tôi")) {
-                            HStack {
-                                Text("Tổng Giá Trị")
-                                    .font(.headline)
-                                Spacer()
-                                Text(portfolioManager.calculateTotalValue(coins: coins).formattedCurrency())
-                                    .font(.title2)
-                                    .bold()
-                                    .foregroundColor(.green)
-                            }
+        VStack {
+            if isLoading {
+                ProgressView("Đang tải dữ liệu...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    Section(header: Text("Tài sản của tôi")) {
+                        HStack {
+                            Text("Tổng Giá Trị")
+                                .font(.headline)
+                            Spacer()
+                            Text(portfolioManager.calculateTotalValue(coins: coins).formattedCurrency())
+                                .font(.title2)
+                                .bold()
+                                .foregroundColor(.green)
                         }
+                    }
 
-                        Section(header: Text("Widget")) {
-                            Text("Sau khi chạy app, bạn có thể thêm widget từ gallery của hệ thống. Trên iOS 15.5 widget hiển thị ở Home Screen và Today View; trên macOS 14 widget hiển thị trong Notification Center hoặc trên Desktop.")
+                    Section(header: Text("Biểu đồ danh mục")) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(snapshot.showsRealHoldings ? "Danh mục hiện tại" : "Xem trước từ top coin")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
-                        }
-                        
-                        Section(header: Text("Danh sách Coin")) {
-                            ForEach(coins) { coin in
-                                CoinRowView(coin: coin, amount: portfolioManager.getAmount(for: coin.id))
+
+                            Text(snapshot.portfolioValue.formattedCurrency())
+                                .font(.title2.bold())
+
+                            if snapshot.totalHistory.count > 1 {
+                                SparklineView(
+                                    data: snapshot.totalHistory,
+                                    lineColor: chartAccentColor,
+                                    fillColor: chartAccentColor
+                                )
+                                .frame(height: 140)
+                            } else {
+                                Text("Chưa có đủ dữ liệu để vẽ chart. Hãy nhập số lượng coin bạn đang nắm giữ.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
                             }
+                        }
+                    }
+
+                    Section(header: Text("Widget")) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Widget không tự hiện trong cửa sổ app. Trên macOS, hãy Control-click lên Desktop rồi chọn Edit Widgets, sau đó tìm \"Crypto Portfolio\" hoặc \"MacWidgetCrypto\" để thêm ra Desktop hoặc Notification Center.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+
+                            Text("Nếu vẫn chưa thấy trong gallery, hãy đóng app, copy app vào thư mục Applications, mở lại app một lần rồi thử Edit Widgets lại.")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Section(header: Text("Danh sách Coin")) {
+                        ForEach(coins) { coin in
+                            CoinRowView(coin: coin, amount: portfolioManager.getAmount(for: coin.id))
                         }
                     }
                 }
             }
-            .navigationTitle("MacCrypto")
-            .toolbar {
-                Button(action: loadData) {
-                    Image(systemName: "arrow.clockwise")
-                }
+        }
+        .navigationTitle("MacCrypto")
+        .toolbar {
+            Button(action: loadData) {
+                Image(systemName: "arrow.clockwise")
             }
         }
-        #if os(iOS)
-        .navigationViewStyle(.stack)
-        #endif
         .onAppear(perform: loadData)
     }
     

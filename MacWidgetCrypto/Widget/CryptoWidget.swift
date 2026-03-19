@@ -34,49 +34,15 @@ struct Provider: TimelineProvider {
 
     private func makeEntry(from coins: [Coin]) -> SimpleEntry {
         let portfolio = PortfolioManager.shared
-        let heldCoins = coins.filter { portfolio.getAmount(for: $0.id) > 0 }
-        let showsRealHoldings = !heldCoins.isEmpty
-        let displayCoins = Array((showsRealHoldings ? heldCoins : coins).prefix(4))
-        let totalHistory = buildTotalHistory(from: displayCoins, portfolio: portfolio, showsRealHoldings: showsRealHoldings)
-
-        let portfolioValue: Double
-        if let lastValue = totalHistory.last {
-            portfolioValue = lastValue
-        } else {
-            portfolioValue = displayCoins.reduce(0) { partialResult, coin in
-                let amount = showsRealHoldings ? portfolio.getAmount(for: coin.id) : 1
-                return partialResult + (coin.currentPrice * amount)
-            }
-        }
+        let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolio, maxCoins: 4)
 
         return SimpleEntry(
             date: Date(),
-            coins: displayCoins,
-            totalHistory: totalHistory,
-            portfolioValue: portfolioValue,
-            showsRealHoldings: showsRealHoldings
+            coins: snapshot.displayCoins,
+            totalHistory: snapshot.totalHistory,
+            portfolioValue: snapshot.portfolioValue,
+            showsRealHoldings: snapshot.showsRealHoldings
         )
-    }
-
-    private func buildTotalHistory(from coins: [Coin], portfolio: PortfolioManager, showsRealHoldings: Bool) -> [Double] {
-        guard let maxPointCount = coins.compactMap({ $0.sparklineIn7D?.price.count }).max(), maxPointCount > 0 else {
-            return []
-        }
-
-        var totalHistory = Array(repeating: 0.0, count: maxPointCount)
-
-        for coin in coins {
-            guard let prices = coin.sparklineIn7D?.price, prices.count == maxPointCount else {
-                continue
-            }
-
-            let amount = showsRealHoldings ? portfolio.getAmount(for: coin.id) : 1.0
-            for index in prices.indices {
-                totalHistory[index] += prices[index] * amount
-            }
-        }
-
-        return totalHistory
     }
 }
 
@@ -294,80 +260,6 @@ struct CryptoWidgetEntryView: View {
                     .font(.caption2.weight(.bold))
                     .foregroundColor(.black)
             )
-    }
-}
-
-struct SparklineView: View {
-    let data: [Double]
-    let lineColor: Color
-    let fillColor: Color
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.white.opacity(0.03))
-
-                if data.count > 1 {
-                    fillPath(in: geometry.size)
-                        .fill(
-                            LinearGradient(
-                                colors: [fillColor.opacity(0.28), fillColor.opacity(0.02)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-
-                    linePath(in: geometry.size)
-                        .stroke(lineColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                }
-            }
-        }
-    }
-
-    private func linePath(in size: CGSize) -> Path {
-        Path { path in
-            let points = normalizedPoints(in: size)
-            guard let first = points.first else { return }
-
-            path.move(to: first)
-            for point in points.dropFirst() {
-                path.addLine(to: point)
-            }
-        }
-    }
-
-    private func fillPath(in size: CGSize) -> Path {
-        Path { path in
-            let points = normalizedPoints(in: size)
-            guard let first = points.first, let last = points.last else { return }
-
-            path.move(to: CGPoint(x: first.x, y: size.height))
-            path.addLine(to: first)
-            for point in points.dropFirst() {
-                path.addLine(to: point)
-            }
-            path.addLine(to: CGPoint(x: last.x, y: size.height))
-            path.closeSubpath()
-        }
-    }
-
-    private func normalizedPoints(in size: CGSize) -> [CGPoint] {
-        guard let minValue = data.min(), let maxValue = data.max(), !data.isEmpty else {
-            return []
-        }
-
-        let yRange = max(maxValue - minValue, 0.0001)
-
-        return data.enumerated().map { index, value in
-            let xProgress = data.count == 1 ? 0 : CGFloat(index) / CGFloat(data.count - 1)
-            let yProgress = CGFloat((value - minValue) / yRange)
-
-            return CGPoint(
-                x: xProgress * size.width,
-                y: size.height - (yProgress * size.height)
-            )
-        }
     }
 }
 
