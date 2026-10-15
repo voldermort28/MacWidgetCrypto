@@ -123,6 +123,8 @@ class CryptoService {
             targetIds = ["bitcoin", "ethereum", "solana", "tether", "binancecoin", "ripple"]
         }
 
+        AppLogger.info("Bắt đầu lấy giá Binance cho: \(targetIds.joined(separator: ", "))")
+
         var tickerMap: [String: String] = [:]
         var symbolsToQuery: [String] = []
 
@@ -167,15 +169,18 @@ class CryptoService {
                                 binanceTickerData[item.symbol] = (price, change, sparkline)
                             }
                             batchSuccess = true
+                            AppLogger.info("Thành công lấy dữ liệu từ \(host) (\(tickers.count) tickers)")
                             break
                         }
                     }
                 } catch {
+                    AppLogger.debug("Host \(host) không phản hồi: \(error.localizedDescription)")
                     continue
                 }
             }
 
             if !batchSuccess {
+                AppLogger.info("Batch request không thành công, thử lấy từng ticker...")
                 await withTaskGroup(of: (String, Double, Double, [Double])?.self) { group in
                     for symbol in symbolsToQuery {
                         group.addTask {
@@ -221,6 +226,9 @@ class CryptoService {
 
         if !resultCoins.isEmpty {
             saveCachedCoins(resultCoins)
+            AppLogger.info("Đã cập nhật giá xong cho \(resultCoins.count) coin.")
+        } else {
+            AppLogger.error("Không lấy được dữ liệu coin nào từ Binance.")
         }
         return resultCoins
     }
@@ -260,7 +268,7 @@ class CryptoService {
                 let coins = try await fetchCoins(for: ids)
                 completion(coins)
             } catch {
-                print("Error fetching from Binance: \(error.localizedDescription)")
+                AppLogger.error("Lỗi lấy giá từ Binance: \(error.localizedDescription)")
                 let cached = getCachedCoins()
                 completion(cached.isEmpty ? nil : cached)
             }

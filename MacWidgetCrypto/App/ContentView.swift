@@ -4,6 +4,9 @@ import UIKit
 #elseif os(macOS)
 import AppKit
 #endif
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 enum ClipboardHelper {
     static func copy(_ text: String) {
@@ -34,6 +37,7 @@ struct ContentView: View {
     @State private var errorMessage: String? = nil
     @State private var showingAddCoinSheet = false
     @State private var showingSyncSheet = false
+    @State private var showingLogsSheet = false
     @State private var autoRefreshTimer: Timer? = nil
 
     private var snapshot: PortfolioSnapshot {
@@ -204,11 +208,16 @@ struct ContentView: View {
                     }
                     .help("Thêm coin mới vào danh sách")
 
+                    Button(action: { showingLogsSheet = true }) {
+                        Image(systemName: "terminal")
+                    }
+                    .help("Xem nhật ký hệ thống (Logs)")
+
                     if isLoading {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Button(action: loadData) {
+                        Button(action: { loadData(isBackgroundRefresh: false) }) {
                             Image(systemName: "arrow.clockwise")
                         }
                         .help("Làm mới giá từ Binance")
@@ -227,34 +236,50 @@ struct ContentView: View {
                 loadData()
             }
         }
+        .sheet(isPresented: $showingLogsSheet) {
+            LogsView()
+        }
         .onAppear {
             let cached = CryptoService.shared.getCachedCoins()
             if !cached.isEmpty {
                 self.coins = cached
             }
             loadData()
-            startAutoRefresh()
+            startForegroundTimer()
         }
         .onDisappear {
-            stopAutoRefresh()
+            stopTimers()
         }
         .onChange(of: scenePhase) { newPhase in
             if newPhase == .active {
+                AppLogger.info("App mở / Active. Cập nhật giá ngay lập tức và chạy timer 30s.")
                 loadData(isBackgroundRefresh: true)
-                startAutoRefresh()
+                startForegroundTimer()
+                #if canImport(WidgetKit)
+                WidgetCenter.shared.reloadAllTimelines()
+                #endif
             } else {
-                stopAutoRefresh()
+                AppLogger.info("App vào background / sleep. Giãn chu kỳ cập nhật lên 60 phút.")
+                startBackgroundTimer()
             }
         }
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSWorkspace.didWakeNotification)) { _ in
+            AppLogger.info("Mac thức dậy từ chế độ Sleep. Cập nhật giá ngay lập tức.")
+            loadData(isBackgroundRefresh: false)
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+        }
+        #endif
     }
     
     func loadData(isBackgroundRefresh: Bool = false) {
-        if coins.isEmpty {
-            isLoading = true
-        } else if !isBackgroundRefresh {
+        if coins.isEmpty || !isBackgroundRefresh {
             isLoading = true
         }
 
+        AppLogger.info("Bắt đầu tải giá (ngầm: \(isBackgroundRefresh))...")
         portfolioManager.reloadHoldings()
         let trackedIds = portfolioManager.trackedCoinIds
         CryptoService.shared.fetchCoins(for: trackedIds) { fetchedCoins in
@@ -263,24 +288,36 @@ struct ContentView: View {
                 if let fetchedCoins = fetchedCoins, !fetchedCoins.isEmpty {
                     self.coins = fetchedCoins
                     self.errorMessage = nil
+                    AppLogger.info("Đã cập nhật hiển thị \(fetchedCoins.count) coin.")
                 } else {
                     if self.coins.isEmpty {
                         self.coins = CryptoService.shared.getCachedCoins()
                     }
                     self.errorMessage = "Không thể kết nối đến máy chủ Binance. Đang hiển thị dữ liệu lưu gần nhất."
+                    AppLogger.error("Không nhận được dữ liệu từ Binance, hiển thị cache.")
                 }
+                #if canImport(WidgetKit)
+                WidgetCenter.shared.reloadAllTimelines()
+                #endif
             }
         }
     }
 
-    private func startAutoRefresh() {
-        stopAutoRefresh()
+    private func startForegroundTimer() {
+        stopTimers()
         autoRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
             loadData(isBackgroundRefresh: true)
         }
     }
 
-    private func stopAutoRefresh() {
+    private func startBackgroundTimer() {
+        stopTimers()
+        autoRefreshTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
+            loadData(isBackgroundRefresh: true)
+        }
+    }
+
+    private func stopTimers() {
         autoRefreshTimer?.invalidate()
         autoRefreshTimer = nil
     }
@@ -597,6 +634,23 @@ struct SyncView: View {
                             .foregroundColor(.secondary)
                     }
                 }
+
+                Section(header: Text("4. Nhật ký Hệ thống (Logs)")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Xem trạng thái mạng, kết nối Binance và lịch sử làm mới dữ liệu.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Button(action: { showingLogs = true }) {
+                            HStack {
+                                Image(systemName: "terminal")
+                                Text("Xem Nhật ký chi tiết (\(AppLogger.shared.logs.count) bản ghi)")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(.vertical, 4)
+                }
             }
             .navigationTitle("Đồng bộ danh mục")
             .toolbar {
@@ -606,6 +660,9 @@ struct SyncView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showingLogs) {
+                LogsView()
+            }
             .alert(isPresented: $showAlert) {
                 Alert(title: Text("Đồng bộ"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
             }
@@ -614,6 +671,8 @@ struct SyncView: View {
             }
         }
     }
+
+    @State private var showingLogs = false
 
     private func uploadData() {
         syncManager.saveSyncKey(syncKeyInput)
@@ -631,6 +690,106 @@ struct SyncView: View {
             if success {
                 onSyncComplete()
             }
+        }
+    }
+}
+
+struct LogsView: View {
+    @Environment(\.presentationMode) private var presentationMode
+    @ObservedObject private var logger = AppLogger.shared
+    @State private var copyNotice = false
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                if logger.logs.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 40))
+                            .foregroundColor(.secondary)
+                        Text("Chưa có bản ghi nhật ký nào.")
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 6) {
+                                ForEach(Array(logger.logs.enumerated()), id: \.offset) { index, log in
+                                    Text(log)
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundColor(logColor(for: log))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .id(index)
+                                }
+                            }
+                            .padding()
+                        }
+                        .onAppear {
+                            if !logger.logs.isEmpty {
+                                proxy.scrollTo(logger.logs.count - 1, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+
+                Divider()
+
+                HStack {
+                    Button(action: {
+                        let fullLogs = logger.logs.joined(separator: "\n")
+                        ClipboardHelper.copy(fullLogs)
+                        copyNotice = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            copyNotice = false
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: copyNotice ? "checkmark" : "doc.on.doc")
+                            Text(copyNotice ? "Đã sao chép!" : "Sao chép tất cả")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(logger.logs.isEmpty)
+
+                    Spacer()
+
+                    Button(action: {
+                        logger.clearLogs()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                            Text("Xóa log")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(logger.logs.isEmpty)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .background(Color.secondary.opacity(0.06))
+            }
+            .navigationTitle("Nhật ký Hệ thống (Logs)")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Đóng") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 550, minHeight: 420)
+        #endif
+    }
+
+    private func logColor(for text: String) -> Color {
+        if text.contains("[ERROR]") {
+            return .red
+        } else if text.contains("[DEBUG]") {
+            return .secondary
+        } else {
+            return .primary
         }
     }
 }

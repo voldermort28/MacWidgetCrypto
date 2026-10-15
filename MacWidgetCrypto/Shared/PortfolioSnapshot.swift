@@ -9,7 +9,6 @@ struct PortfolioSnapshot {
 
 enum PortfolioSnapshotBuilder {
     static func makeSnapshot(from coins: [Coin], portfolio: PortfolioManager, maxCoins: Int = 6, fallbackToTopCoins: Bool = false) -> PortfolioSnapshot {
-        portfolio.reloadHoldings()
         let heldCoins = coins
             .filter { portfolio.getAmount(for: $0.id) > 0 }
             .sorted { (coin1, coin2) -> Bool in

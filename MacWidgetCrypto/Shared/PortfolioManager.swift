@@ -44,7 +44,6 @@ class PortfolioManager: ObservableObject {
     }
     
     func getAmount(for coinId: String) -> Double {
-        reloadHoldings()
         return holdings[coinId] ?? 0.0
     }
     
@@ -53,29 +52,28 @@ class PortfolioManager: ObservableObject {
     }
     
     func reloadHoldings() {
-        if let saved = userDefaults.dictionary(forKey: "user_holdings") as? [String: Double] {
+        let saved = (userDefaults.dictionary(forKey: "user_holdings") as? [String: Double]) ?? [:]
+        if self.holdings != saved {
             self.holdings = saved
+            AppLogger.info("Reloaded holdings: \(saved.keys.joined(separator: ", "))")
         }
         loadTrackedCoins()
     }
 
     func loadTrackedCoins() {
-        if let saved = userDefaults.stringArray(forKey: trackedCoinsKey), !saved.isEmpty {
-            self.trackedCoinIds = saved
-        } else {
-            self.trackedCoinIds = defaultTrackedCoins
-            userDefaults.set(defaultTrackedCoins, forKey: trackedCoinsKey)
-        }
+        let saved = userDefaults.stringArray(forKey: trackedCoinsKey) ?? defaultTrackedCoins
+        var current = saved.isEmpty ? defaultTrackedCoins : saved
 
-        var updated = false
         for (id, amount) in holdings where amount > 0 {
-            if !trackedCoinIds.contains(id) {
-                trackedCoinIds.append(id)
-                updated = true
+            if !current.contains(id) {
+                current.append(id)
             }
         }
-        if updated {
-            saveTrackedCoins()
+
+        if self.trackedCoinIds != current {
+            self.trackedCoinIds = current
+            userDefaults.set(current, forKey: trackedCoinsKey)
+            AppLogger.info("Loaded tracked coins: \(current.joined(separator: ", "))")
         }
     }
 

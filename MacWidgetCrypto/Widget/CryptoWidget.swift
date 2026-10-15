@@ -52,11 +52,10 @@ struct Provider: TimelineProvider {
                 }
             }
 
-            let currentHour = Calendar.current.component(.hour, from: Date())
-            let isActiveHours = (7..<23).contains(currentHour)
-            let refreshMinutes = isActiveHours ? 15 : 60
-
+            // Background update policy: 60 minutes interval as requested
+            let refreshMinutes = 60
             let nextUpdate = Calendar.current.date(byAdding: .minute, value: refreshMinutes, to: Date()) ?? Date().addingTimeInterval(Double(refreshMinutes * 60))
+            AppLogger.info("Widget cập nhật dữ liệu. Lần tự động cập nhật ngầm tiếp theo: \(refreshMinutes) phút nữa.")
             completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
         }
     }
