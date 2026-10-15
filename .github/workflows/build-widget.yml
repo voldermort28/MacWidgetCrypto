@@ -62,16 +62,33 @@ jobs:
           CODE_SIGN_IDENTITY="" \
           build
 
-    - name: Zip App
+    - name: Package DMG & Zip
       run: |
-        cd build/Build/Products/Release/
+        RELEASE_DIR="build/Build/Products/Release"
+        APP_PATH="$RELEASE_DIR/MacWidgetCrypto.app"
+
+        echo "=== Creating DMG installer ==="
+        DMG_TEMP="build/dmg_temp"
+        mkdir -p "$DMG_TEMP"
+        cp -R "$APP_PATH" "$DMG_TEMP/"
+        ln -s /Applications "$DMG_TEMP/Applications"
+
+        hdiutil create -volname "MacWidgetCrypto" \
+          -srcfolder "$DMG_TEMP" \
+          -ov -format UDZO \
+          "$RELEASE_DIR/MacWidgetCrypto.dmg"
+
+        echo "=== Creating ZIP archive ==="
+        cd "$RELEASE_DIR"
         zip -r MacWidgetCrypto.app.zip MacWidgetCrypto.app
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: Crypto-Widget-App
-        path: build/Build/Products/Release/MacWidgetCrypto.app.zip
+        path: |
+          build/Build/Products/Release/MacWidgetCrypto.dmg
+          build/Build/Products/Release/MacWidgetCrypto.app.zip
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
@@ -84,12 +101,15 @@ jobs:
           - **Branch**: `${{ github.ref_name }}`
           - **Build**: `${{ github.run_number }}`
 
-          ### Assets:
-          - `MacWidgetCrypto.app.zip`: macOS Application bundle (bao gồm CryptoWidget extension)
+          ### Downloads:
+          - `MacWidgetCrypto.dmg`: File cài đặt macOS (kéo thả icon vào thư mục Applications)
+          - `MacWidgetCrypto.app.zip`: Bản nén ứng dụng macOS (bao gồm CryptoWidget extension)
         files: |
+          build/Build/Products/Release/MacWidgetCrypto.dmg
           build/Build/Products/Release/MacWidgetCrypto.app.zip
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
