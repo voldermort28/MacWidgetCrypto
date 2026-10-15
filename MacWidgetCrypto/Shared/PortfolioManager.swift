@@ -17,11 +17,24 @@ class PortfolioManager: ObservableObject {
     
     init() {
         // Try to load from App Group, fallback to standard if not set up yet (for testing in App)
-        if let groupDefaults = UserDefaults(suiteName: appGroupId) {
-            self.userDefaults = groupDefaults
-        } else {
-            self.userDefaults = UserDefaults.standard
+        let groupDefaults = UserDefaults(suiteName: appGroupId)
+        let defaults = groupDefaults ?? UserDefaults.standard
+        self.userDefaults = defaults
+
+        // Auto-migrate from legacy/standard defaults if App Group is newly created and empty
+        if let groupDefaults = groupDefaults {
+            let currentGroupHoldings = groupDefaults.dictionary(forKey: "user_holdings") as? [String: Double]
+            if currentGroupHoldings == nil || currentGroupHoldings?.isEmpty == true {
+                if let legacyHoldings = UserDefaults.standard.dictionary(forKey: "user_holdings") as? [String: Double], !legacyHoldings.isEmpty {
+                    groupDefaults.set(legacyHoldings, forKey: "user_holdings")
+                    if let legacyCoins = UserDefaults.standard.stringArray(forKey: trackedCoinsKey), !legacyCoins.isEmpty {
+                        groupDefaults.set(legacyCoins, forKey: trackedCoinsKey)
+                    }
+                    AppLogger.info("Đã tự động khôi phục danh mục từ bộ nhớ chuẩn sang App Group.")
+                }
+            }
         }
+
         reloadHoldings()
         loadTrackedCoins()
     }
@@ -49,6 +62,7 @@ class PortfolioManager: ObservableObject {
     
     private func saveHoldings() {
         userDefaults.set(holdings, forKey: "user_holdings")
+        UserDefaults.standard.set(holdings, forKey: "user_holdings")
     }
     
     func reloadHoldings() {
@@ -79,6 +93,7 @@ class PortfolioManager: ObservableObject {
 
     private func saveTrackedCoins() {
         userDefaults.set(trackedCoinIds, forKey: trackedCoinsKey)
+        UserDefaults.standard.set(trackedCoinIds, forKey: trackedCoinsKey)
     }
 
     func addTrackedCoin(id: String) {
