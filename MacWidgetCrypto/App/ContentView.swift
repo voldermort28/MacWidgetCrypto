@@ -71,11 +71,7 @@ struct ContentView: View {
                 .background(Color.orange.opacity(0.15))
             }
 
-            if isLoading && coins.isEmpty {
-                ProgressView("Đang tải dữ liệu...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
+            List {
                     Section(header: Text("Tài sản của tôi")) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
@@ -143,13 +139,18 @@ struct ContentView: View {
                     }) {
                         if coins.isEmpty {
                             VStack(spacing: 8) {
-                                Text("Danh sách coin trống")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Button("Thêm Coin mới") {
-                                    showingAddCoinSheet = true
+                                if isLoading {
+                                    ProgressView("Đang kết nối Binance...")
+                                        .padding(.vertical, 8)
+                                } else {
+                                    Text("Danh sách coin trống")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Button("Thêm Coin mới") {
+                                        showingAddCoinSheet = true
+                                    }
+                                    .buttonStyle(.borderedProminent)
                                 }
-                                .buttonStyle(.borderedProminent)
                             }
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.vertical, 12)
@@ -191,7 +192,6 @@ struct ContentView: View {
                         }
                     }
                 }
-            }
         }
         .navigationTitle("MacCrypto")
         .toolbar {
@@ -202,10 +202,15 @@ struct ContentView: View {
                     }
                     .help("Thêm coin mới vào danh sách")
 
-                    Button(action: loadData) {
-                        Image(systemName: "arrow.clockwise")
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Button(action: loadData) {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .help("Làm mới giá từ Binance")
                     }
-                    .help("Làm mới giá")
                 }
             }
         }
@@ -246,7 +251,7 @@ struct ContentView: View {
                     if self.coins.isEmpty {
                         self.coins = CryptoService.shared.getCachedCoins()
                     }
-                    self.errorMessage = "Không thể làm mới giá lúc này (giới hạn CoinGecko API). Đang hiển thị dữ liệu lưu gần nhất."
+                    self.errorMessage = "Không thể kết nối đến máy chủ Binance. Đang hiển thị dữ liệu lưu gần nhất."
                 }
             }
         }
