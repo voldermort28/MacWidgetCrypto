@@ -64,11 +64,11 @@ struct Provider: TimelineProvider {
         case .systemSmall:
             maxCoins = 2
         case .systemMedium:
-            maxCoins = 2
+            maxCoins = 3
         case .systemLarge:
-            maxCoins = 4
+            maxCoins = 6
         @unknown default:
-            maxCoins = 4
+            maxCoins = 6
         }
         let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolio, maxCoins: maxCoins, fallbackToTopCoins: false)
 
@@ -175,7 +175,7 @@ struct CryptoWidgetEntryView: View {
                 if entry.coins.isEmpty || !entry.showsRealHoldings {
                     emptyState
                 } else {
-                    ForEach(entry.coins.prefix(2)) { coin in
+                    ForEach(entry.coins.prefix(3)) { coin in
                         detailedCoinRow(for: coin)
                     }
                 }
@@ -212,7 +212,7 @@ struct CryptoWidgetEntryView: View {
     }
 
     private var largeWidget: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Crypto Portfolio")
@@ -236,7 +236,7 @@ struct CryptoWidgetEntryView: View {
                     lineColor: accentColor,
                     fillColor: accentColor
                 )
-                .frame(height: 50)
+                .frame(height: 42)
             }
 
             Divider()
@@ -245,8 +245,8 @@ struct CryptoWidgetEntryView: View {
             if entry.coins.isEmpty || !entry.showsRealHoldings {
                 emptyState
             } else {
-                VStack(spacing: 6) {
-                    ForEach(entry.coins.prefix(4)) { coin in
+                VStack(spacing: 5) {
+                    ForEach(entry.coins.prefix(6)) { coin in
                         detailedCoinRow(for: coin)
                     }
                 }

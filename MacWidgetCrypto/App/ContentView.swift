@@ -35,7 +35,7 @@ struct ContentView: View {
     @State private var showingSyncSheet = false
 
     private var snapshot: PortfolioSnapshot {
-        PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolioManager, maxCoins: 4)
+        PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolioManager, maxCoins: 6)
     }
 
     private var chartAccentColor: Color {
