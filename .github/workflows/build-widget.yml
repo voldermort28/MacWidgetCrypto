@@ -42,13 +42,11 @@ jobs:
           CODE_SIGN_IDENTITY="" \
           build
 
-        echo "Applying ad-hoc code signing with entitlements for macOS executables and bundles..."
+        echo "Applying ad-hoc code signing with entitlements for macOS..."
         APP_DIR="build/Build/Products/Release/MacWidgetCrypto.app"
         PLUGIN_DIR="$APP_DIR/Contents/PlugIns/CryptoWidget.appex"
 
-        codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "$PLUGIN_DIR/Contents/MacOS/CryptoWidget"
         codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "$PLUGIN_DIR"
-        codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "$APP_DIR/Contents/MacOS/MacWidgetCrypto"
         codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "$APP_DIR"
 
     - name: Build iOS App & Widget (IPA for TrollStore)
@@ -74,9 +72,7 @@ jobs:
         echo "Packaging iOS IPA for TrollStore..."
         mkdir -p build_ios/Payload
         cp -R build_ios/Build/Products/Release-iphoneos/MacWidgetCrypto.app build_ios/Payload/
-        codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "build_ios/Payload/MacWidgetCrypto.app/PlugIns/CryptoWidget.appex/CryptoWidget"
         codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "build_ios/Payload/MacWidgetCrypto.app/PlugIns/CryptoWidget.appex"
-        codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "build_ios/Payload/MacWidgetCrypto.app/MacWidgetCrypto"
         codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "build_ios/Payload/MacWidgetCrypto.app"
         cd build_ios
         zip -r MacWidgetCrypto.ipa Payload

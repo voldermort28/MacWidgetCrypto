@@ -21,8 +21,15 @@ targets:
 
     info:
       path: MacWidgetCrypto/App/Info.plist
+      properties:
+        CFBundleDisplayName: "MacWidgetCrypto"
     entitlements:
       path: MacWidgetCrypto/App/MacWidgetCrypto.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - group.com.voldermort28.MacWidgetCrypto
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.voldermort28.MacWidgetCrypto
@@ -42,10 +49,16 @@ targets:
     info:
       path: MacWidgetCrypto/Widget/Info.plist
       properties:
+        CFBundleDisplayName: "Crypto Portfolio"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
       path: MacWidgetCrypto/Widget/CryptoWidget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - group.com.voldermort28.MacWidgetCrypto
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.voldermort28.MacWidgetCrypto.CryptoWidget
