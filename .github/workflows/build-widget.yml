@@ -86,27 +86,26 @@ jobs:
         cp -R "$APP_PATH" "$DMG_TEMP/"
         ln -s /Applications "$DMG_TEMP/Applications"
 
-        cat << 'EOF' > "$DMG_TEMP/Cai_Dat_Va_Kich_Hoat_Widget.command"
-#!/bin/bash
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-echo "======================================================"
-echo "    Cài đặt MacWidgetCrypto & Tự động Kích hoạt Widget"
-echo "======================================================"
-echo "1. Đang sao chép MacWidgetCrypto vào /Applications..."
-cp -R "$DIR/MacWidgetCrypto.app" /Applications/
-echo "2. Đang gỡ bỏ cờ cách ly macOS (quarantine)..."
-xattr -cr /Applications/MacWidgetCrypto.app
-echo "3. Đang làm mới hệ thống Widget (chronod)..."
-killall chronod 2>/dev/null || true
-killall NotificationCenter 2>/dev/null || true
-echo "4. Đang mở ứng dụng..."
-open /Applications/MacWidgetCrypto.app
-echo ""
-echo "✅ Hoàn tất! Widget đã sẵn sàng trong Edit Widgets."
-echo ""
-sleep 2
-exit 0
-EOF
+        printf '%s\n' \
+          '#!/bin/bash' \
+          'DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"' \
+          'echo "======================================================"' \
+          'echo "    Cai dat MacWidgetCrypto & Tu dong Kich hoat Widget"' \
+          'echo "======================================================"' \
+          'echo "1. Dang sao chep MacWidgetCrypto vao /Applications..."' \
+          'cp -R "$DIR/MacWidgetCrypto.app" /Applications/' \
+          'echo "2. Dang go bo co cach ly macOS (quarantine)..."' \
+          'xattr -cr /Applications/MacWidgetCrypto.app' \
+          'echo "3. Dang lam moi he thong Widget (chronod)..."' \
+          'killall chronod 2>/dev/null || true' \
+          'killall NotificationCenter 2>/dev/null || true' \
+          'echo "4. Dang mo ung dung..."' \
+          'open /Applications/MacWidgetCrypto.app' \
+          'echo ""' \
+          'echo "Hoan tat! Widget da san sang trong Edit Widgets."' \
+          'echo ""' \
+          'sleep 2' \
+          'exit 0' > "$DMG_TEMP/Cai_Dat_Va_Kich_Hoat_Widget.command"
         chmod +x "$DMG_TEMP/Cai_Dat_Va_Kich_Hoat_Widget.command"
 
         echo "=== Creating DMG installer ==="
@@ -122,13 +121,12 @@ EOF
 
         PKG_SCRIPTS="build/pkg_scripts"
         mkdir -p "$PKG_SCRIPTS"
-        cat << 'EOF' > "$PKG_SCRIPTS/postinstall"
-#!/bin/bash
-xattr -cr /Applications/MacWidgetCrypto.app 2>/dev/null || true
-killall chronod 2>/dev/null || true
-killall NotificationCenter 2>/dev/null || true
-exit 0
-EOF
+        printf '%s\n' \
+          '#!/bin/bash' \
+          'xattr -cr /Applications/MacWidgetCrypto.app 2>/dev/null || true' \
+          'killall chronod 2>/dev/null || true' \
+          'killall NotificationCenter 2>/dev/null || true' \
+          'exit 0' > "$PKG_SCRIPTS/postinstall"
         chmod +x "$PKG_SCRIPTS/postinstall"
 
         pkgbuild --root "$PKG_ROOT" \
