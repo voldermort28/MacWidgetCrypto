@@ -42,9 +42,14 @@ jobs:
           CODE_SIGN_IDENTITY="" \
           build
 
-        echo "Applying ad-hoc code signing with entitlements for macOS app and widget..."
-        codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "build/Build/Products/Release/MacWidgetCrypto.app/Contents/PlugIns/CryptoWidget.appex"
-        codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "build/Build/Products/Release/MacWidgetCrypto.app"
+        echo "Applying ad-hoc code signing with entitlements for macOS executables and bundles..."
+        APP_DIR="build/Build/Products/Release/MacWidgetCrypto.app"
+        PLUGIN_DIR="$APP_DIR/Contents/PlugIns/CryptoWidget.appex"
+
+        codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "$PLUGIN_DIR/Contents/MacOS/CryptoWidget"
+        codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "$PLUGIN_DIR"
+        codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "$APP_DIR/Contents/MacOS/MacWidgetCrypto"
+        codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "$APP_DIR"
 
     - name: Build iOS App & Widget (IPA for TrollStore)
       run: |
@@ -69,7 +74,9 @@ jobs:
         echo "Packaging iOS IPA for TrollStore..."
         mkdir -p build_ios/Payload
         cp -R build_ios/Build/Products/Release-iphoneos/MacWidgetCrypto.app build_ios/Payload/
+        codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "build_ios/Payload/MacWidgetCrypto.app/PlugIns/CryptoWidget.appex/CryptoWidget"
         codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "build_ios/Payload/MacWidgetCrypto.app/PlugIns/CryptoWidget.appex"
+        codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "build_ios/Payload/MacWidgetCrypto.app/MacWidgetCrypto"
         codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "build_ios/Payload/MacWidgetCrypto.app"
         cd build_ios
         zip -r MacWidgetCrypto.ipa Payload
@@ -96,10 +103,13 @@ jobs:
           'cp -R "$DIR/MacWidgetCrypto.app" /Applications/' \
           'echo "2. Dang go bo co cach ly macOS (quarantine)..."' \
           'xattr -cr /Applications/MacWidgetCrypto.app' \
-          'echo "3. Dang lam moi he thong Widget (chronod)..."' \
+          'echo "3. Dang dang ky Widget voi he thong..."' \
+          '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/MacWidgetCrypto.app 2>/dev/null || true' \
+          'pluginkit -a /Applications/MacWidgetCrypto.app/Contents/PlugIns/CryptoWidget.appex 2>/dev/null || true' \
+          'echo "4. Dang lam moi he thong Widget (chronod)..."' \
           'killall chronod 2>/dev/null || true' \
           'killall NotificationCenter 2>/dev/null || true' \
-          'echo "4. Dang mo ung dung..."' \
+          'echo "5. Dang mo ung dung..."' \
           'open /Applications/MacWidgetCrypto.app' \
           'echo ""' \
           'echo "Hoan tat! Widget da san sang trong Edit Widgets."' \
@@ -124,12 +134,15 @@ jobs:
         printf '%s\n' \
           '#!/bin/bash' \
           'xattr -cr /Applications/MacWidgetCrypto.app 2>/dev/null || true' \
+          '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/MacWidgetCrypto.app 2>/dev/null || true' \
+          'pluginkit -a /Applications/MacWidgetCrypto.app/Contents/PlugIns/CryptoWidget.appex 2>/dev/null || true' \
           'killall chronod 2>/dev/null || true' \
           'killall NotificationCenter 2>/dev/null || true' \
           'exit 0' > "$PKG_SCRIPTS/postinstall"
         chmod +x "$PKG_SCRIPTS/postinstall"
 
         pkgbuild --root "$PKG_ROOT" \
+          --ownership preserve \
           --identifier "com.voldermort28.MacWidgetCrypto" \
           --version "1.0.${{ github.run_number }}" \
           --scripts "$PKG_SCRIPTS" \
