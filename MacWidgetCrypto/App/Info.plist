@@ -4,6 +4,9 @@
 <dict>
     <key>CFBundleName</key>
     <string>MacWidgetCrypto</string>
+    <key>CFBundleDisplayName</key>
+    <string>MacWidgetCrypto</string>
+
     <key>CFBundleIdentifier</key>
     <string>com.voldermort28.MacWidgetCrypto</string>
     <key>CFBundleVersion</key>
