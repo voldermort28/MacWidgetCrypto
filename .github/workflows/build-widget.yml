@@ -75,21 +75,67 @@ jobs:
         zip -r MacWidgetCrypto.ipa Payload
 
 
-    - name: Package DMG & Zip for macOS
+    - name: Package DMG, PKG & Zip for macOS
       run: |
         RELEASE_DIR="build/Build/Products/Release"
         APP_PATH="$RELEASE_DIR/MacWidgetCrypto.app"
 
-        echo "=== Creating DMG installer ==="
+        echo "=== Creating 1-Click Installer script for DMG ==="
         DMG_TEMP="build/dmg_temp"
         mkdir -p "$DMG_TEMP"
         cp -R "$APP_PATH" "$DMG_TEMP/"
         ln -s /Applications "$DMG_TEMP/Applications"
 
+        cat << 'EOF' > "$DMG_TEMP/Cai_Dat_Va_Kich_Hoat_Widget.command"
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+echo "======================================================"
+echo "    Cài đặt MacWidgetCrypto & Tự động Kích hoạt Widget"
+echo "======================================================"
+echo "1. Đang sao chép MacWidgetCrypto vào /Applications..."
+cp -R "$DIR/MacWidgetCrypto.app" /Applications/
+echo "2. Đang gỡ bỏ cờ cách ly macOS (quarantine)..."
+xattr -cr /Applications/MacWidgetCrypto.app
+echo "3. Đang làm mới hệ thống Widget (chronod)..."
+killall chronod 2>/dev/null || true
+killall NotificationCenter 2>/dev/null || true
+echo "4. Đang mở ứng dụng..."
+open /Applications/MacWidgetCrypto.app
+echo ""
+echo "✅ Hoàn tất! Widget đã sẵn sàng trong Edit Widgets."
+echo ""
+sleep 2
+exit 0
+EOF
+        chmod +x "$DMG_TEMP/Cai_Dat_Va_Kich_Hoat_Widget.command"
+
+        echo "=== Creating DMG installer ==="
         hdiutil create -volname "MacWidgetCrypto" \
           -srcfolder "$DMG_TEMP" \
           -ov -format UDZO \
           "$RELEASE_DIR/MacWidgetCrypto.dmg"
+
+        echo "=== Creating PKG installer (Automated postinstall) ==="
+        PKG_ROOT="build/pkg_root"
+        mkdir -p "$PKG_ROOT/Applications"
+        cp -R "$APP_PATH" "$PKG_ROOT/Applications/"
+
+        PKG_SCRIPTS="build/pkg_scripts"
+        mkdir -p "$PKG_SCRIPTS"
+        cat << 'EOF' > "$PKG_SCRIPTS/postinstall"
+#!/bin/bash
+xattr -cr /Applications/MacWidgetCrypto.app 2>/dev/null || true
+killall chronod 2>/dev/null || true
+killall NotificationCenter 2>/dev/null || true
+exit 0
+EOF
+        chmod +x "$PKG_SCRIPTS/postinstall"
+
+        pkgbuild --root "$PKG_ROOT" \
+          --identifier "com.voldermort28.MacWidgetCrypto" \
+          --version "1.0.${{ github.run_number }}" \
+          --scripts "$PKG_SCRIPTS" \
+          "$RELEASE_DIR/MacWidgetCrypto.pkg"
 
         echo "=== Creating ZIP archive ==="
         cd "$RELEASE_DIR"
@@ -101,6 +147,7 @@ jobs:
         name: Crypto-Widget-App
         path: |
           build/Build/Products/Release/MacWidgetCrypto.dmg
+          build/Build/Products/Release/MacWidgetCrypto.pkg
           build/Build/Products/Release/MacWidgetCrypto.app.zip
           build_ios/MacWidgetCrypto.ipa
 
@@ -115,18 +162,13 @@ jobs:
           - **Branch**: `${{ github.ref_name }}`
           - **Build**: `${{ github.run_number }}`
 
-          ### Downloads:
-          - 💿 `MacWidgetCrypto.dmg`: Bản cài đặt macOS (kéo thả vào Applications, ký ad-hoc)
-          - 📦 `MacWidgetCrypto.app.zip`: Bản nén ứng dụng macOS
-          - 📱 `MacWidgetCrypto.ipa`: File cài đặt cho iPhone/iPad (dành cho TrollStore / AltStore / Sideloadly)
-
-          ### 💡 Lưu ý kích hoạt Widget trên macOS:
-          Sau khi tải về và kéo vào `/Applications`, mở Terminal chạy lệnh sau để gỡ cờ cách ly của macOS và kích hoạt Widget ngay lập tức:
-          ```bash
-          xattr -cr /Applications/MacWidgetCrypto.app && killall chronod
-          ```
-          Sau đó mở ứng dụng một lần, ra màn hình chính click chuột phải -> Edit Widgets -> tìm **Crypto Portfolio**.
+          ### 📦 File Tải Về:
+          - ⚙️ `MacWidgetCrypto.pkg`: **Bộ cài đặt tự động 1-Click (Khuyên dùng cho macOS)** — Tự động cài vào Applications, gỡ cờ cách ly và kích hoạt widget ngay lập tức, không cần gõ lệnh.
+          - 💿 `MacWidgetCrypto.dmg`: Bản kéo-thả truyền thống (có kèm sẵn file `Cai_Dat_Va_Kich_Hoat_Widget.command` bên trong để click đúp chạy tự động).
+          - 📦 `MacWidgetCrypto.app.zip`: Bản zip ứng dụng macOS.
+          - 📱 `MacWidgetCrypto.ipa`: Bản cài đặt cho iPhone/iPad (dành cho TrollStore / AltStore / Sideloadly).
         files: |
+          build/Build/Products/Release/MacWidgetCrypto.pkg
           build/Build/Products/Release/MacWidgetCrypto.dmg
           build/Build/Products/Release/MacWidgetCrypto.app.zip
           build_ios/MacWidgetCrypto.ipa
