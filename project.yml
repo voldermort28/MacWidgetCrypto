@@ -17,6 +17,8 @@ targets:
       - path: MacWidgetCrypto/Shared
     dependencies:
       - target: CryptoWidget
+        embed: true
+
     info:
       path: MacWidgetCrypto/App/Info.plist
     entitlements:

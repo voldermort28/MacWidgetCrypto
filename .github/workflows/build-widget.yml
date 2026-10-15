@@ -42,7 +42,10 @@ jobs:
           CODE_SIGN_IDENTITY="" \
           build
 
-    - name: Build iOS App & Widget
+        echo "Applying ad-hoc code signing for macOS app and widget..."
+        codesign --force --deep --sign - build/Build/Products/Release/MacWidgetCrypto.app
+
+    - name: Build iOS App & Widget (IPA for TrollStore)
       run: |
         PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
 
@@ -51,18 +54,25 @@ jobs:
           exit 1
         fi
 
-        echo "Building iOS Simulator project: $PROJECT_FILE"
+        echo "Building iOS Device project: $PROJECT_FILE"
         xcodebuild -project "$PROJECT_FILE" \
           -scheme "MacWidgetCrypto" \
           -configuration Release \
-          -derivedDataPath build \
-          -destination "generic/platform=iOS Simulator" \
+          -derivedDataPath build_ios \
+          -destination "generic/platform=iOS" \
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
           build
 
-    - name: Package DMG & Zip
+        echo "Packaging iOS IPA for TrollStore..."
+        mkdir -p build_ios/Payload
+        cp -R build_ios/Build/Products/Release-iphoneos/MacWidgetCrypto.app build_ios/Payload/
+        codesign --force --deep --sign - build_ios/Payload/MacWidgetCrypto.app
+        cd build_ios
+        zip -r MacWidgetCrypto.ipa Payload
+
+    - name: Package DMG & Zip for macOS
       run: |
         RELEASE_DIR="build/Build/Products/Release"
         APP_PATH="$RELEASE_DIR/MacWidgetCrypto.app"
@@ -89,6 +99,7 @@ jobs:
         path: |
           build/Build/Products/Release/MacWidgetCrypto.dmg
           build/Build/Products/Release/MacWidgetCrypto.app.zip
+          build_ios/MacWidgetCrypto.ipa
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
@@ -102,14 +113,17 @@ jobs:
           - **Build**: `${{ github.run_number }}`
 
           ### Downloads:
-          - `MacWidgetCrypto.dmg`: File cài đặt macOS (kéo thả icon vào thư mục Applications)
-          - `MacWidgetCrypto.app.zip`: Bản nén ứng dụng macOS (bao gồm CryptoWidget extension)
+          - 💿 `MacWidgetCrypto.dmg`: Bản cài đặt macOS (kéo thả vào Applications, đã ký ad-hoc hỗ trợ widget)
+          - 📦 `MacWidgetCrypto.app.zip`: Bản nén ứng dụng macOS
+          - 📱 `MacWidgetCrypto.ipa`: File cài đặt cho iPhone/iPad (dành cho TrollStore / AltStore / Sideloadly)
         files: |
           build/Build/Products/Release/MacWidgetCrypto.dmg
           build/Build/Products/Release/MacWidgetCrypto.app.zip
+          build_ios/MacWidgetCrypto.ipa
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 
