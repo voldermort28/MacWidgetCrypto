@@ -27,12 +27,14 @@ enum ClipboardHelper {
 }
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var portfolioManager = PortfolioManager.shared
     @State private var coins: [Coin] = []
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
     @State private var showingAddCoinSheet = false
     @State private var showingSyncSheet = false
+    @State private var autoRefreshTimer: Timer? = nil
 
     private var snapshot: PortfolioSnapshot {
         PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolioManager, maxCoins: 6)
@@ -231,11 +233,25 @@ struct ContentView: View {
                 self.coins = cached
             }
             loadData()
+            startAutoRefresh()
+        }
+        .onDisappear {
+            stopAutoRefresh()
+        }
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .active {
+                loadData(isBackgroundRefresh: true)
+                startAutoRefresh()
+            } else {
+                stopAutoRefresh()
+            }
         }
     }
     
-    func loadData() {
+    func loadData(isBackgroundRefresh: Bool = false) {
         if coins.isEmpty {
+            isLoading = true
+        } else if !isBackgroundRefresh {
             isLoading = true
         }
 
@@ -255,6 +271,18 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    private func startAutoRefresh() {
+        stopAutoRefresh()
+        autoRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+            loadData(isBackgroundRefresh: true)
+        }
+    }
+
+    private func stopAutoRefresh() {
+        autoRefreshTimer?.invalidate()
+        autoRefreshTimer = nil
     }
 
     func deleteCoin(_ coin: Coin) {

@@ -52,7 +52,11 @@ struct Provider: TimelineProvider {
                 }
             }
 
-            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date().addingTimeInterval(900)
+            let currentHour = Calendar.current.component(.hour, from: Date())
+            let isActiveHours = (7..<23).contains(currentHour)
+            let refreshMinutes = isActiveHours ? 15 : 60
+
+            let nextUpdate = Calendar.current.date(byAdding: .minute, value: refreshMinutes, to: Date()) ?? Date().addingTimeInterval(Double(refreshMinutes * 60))
             completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
         }
     }
