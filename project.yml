@@ -19,10 +19,13 @@ targets:
       - target: CryptoWidget
     info:
       path: MacWidgetCrypto/App/Info.plist
+    entitlements:
+      path: MacWidgetCrypto/App/MacWidgetCrypto.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.voldermort28.MacWidgetCrypto
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: MacWidgetCrypto/App/MacWidgetCrypto.entitlements
 
   CryptoWidget:
     type: app-extension
@@ -39,7 +42,11 @@ targets:
       properties:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: MacWidgetCrypto/Widget/CryptoWidget.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.voldermort28.MacWidgetCrypto.CryptoWidget
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: MacWidgetCrypto/Widget/CryptoWidget.entitlements
+

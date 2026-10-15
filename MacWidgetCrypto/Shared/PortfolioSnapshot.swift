@@ -11,16 +11,18 @@ enum PortfolioSnapshotBuilder {
     static func makeSnapshot(from coins: [Coin], portfolio: PortfolioManager, maxCoins: Int = 4) -> PortfolioSnapshot {
         let heldCoins = coins.filter { portfolio.getAmount(for: $0.id) > 0 }
         let showsRealHoldings = !heldCoins.isEmpty
-        let displayCoins = Array((showsRealHoldings ? heldCoins : coins).prefix(maxCoins))
-        let totalHistory = buildTotalHistory(from: displayCoins, portfolio: portfolio, showsRealHoldings: showsRealHoldings)
+        let relevantCoins = showsRealHoldings ? heldCoins : coins
+        let displayCoins = Array(relevantCoins.prefix(maxCoins))
+        let totalHistory = buildTotalHistory(from: relevantCoins, portfolio: portfolio, showsRealHoldings: showsRealHoldings)
 
         let portfolioValue: Double
-        if let lastValue = totalHistory.last {
-            portfolioValue = lastValue
+        if showsRealHoldings {
+            portfolioValue = heldCoins.reduce(0) { partialResult, coin in
+                partialResult + (coin.currentPrice * portfolio.getAmount(for: coin.id))
+            }
         } else {
             portfolioValue = displayCoins.reduce(0) { partialResult, coin in
-                let amount = showsRealHoldings ? portfolio.getAmount(for: coin.id) : 1.0
-                return partialResult + (coin.currentPrice * amount)
+                partialResult + coin.currentPrice
             }
         }
 
@@ -33,20 +35,22 @@ enum PortfolioSnapshotBuilder {
     }
 
     private static func buildTotalHistory(from coins: [Coin], portfolio: PortfolioManager, showsRealHoldings: Bool) -> [Double] {
-        guard let maxPointCount = coins.compactMap({ $0.sparklineIn7D?.price.count }).max(), maxPointCount > 0 else {
+        let counts = coins.compactMap { $0.sparklineIn7D?.price.count }.filter { $0 > 1 }
+        guard let minPointCount = counts.min(), minPointCount > 1 else {
             return []
         }
 
-        var totalHistory = Array(repeating: 0.0, count: maxPointCount)
+        var totalHistory = Array(repeating: 0.0, count: minPointCount)
 
         for coin in coins {
-            guard let prices = coin.sparklineIn7D?.price, prices.count == maxPointCount else {
+            guard let prices = coin.sparklineIn7D?.price, prices.count >= minPointCount else {
                 continue
             }
 
+            let alignedPrices = Array(prices.suffix(minPointCount))
             let amount = showsRealHoldings ? portfolio.getAmount(for: coin.id) : 1.0
-            for index in prices.indices {
-                totalHistory[index] += prices[index] * amount
+            for index in 0..<minPointCount {
+                totalHistory[index] += alignedPrices[index] * amount
             }
         }
 

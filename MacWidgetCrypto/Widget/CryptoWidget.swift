@@ -22,7 +22,7 @@ struct Provider: TimelineProvider {
 
             do {
                 let coins = try await CryptoService.shared.fetchCoins()
-                entry = makeEntry(from: coins)
+                entry = makeEntry(from: coins, family: context.family)
             } catch {
                 entry = placeholder(in: context)
             }
@@ -32,9 +32,10 @@ struct Provider: TimelineProvider {
         }
     }
 
-    private func makeEntry(from coins: [Coin]) -> SimpleEntry {
+    private func makeEntry(from coins: [Coin], family: WidgetFamily = .systemMedium) -> SimpleEntry {
         let portfolio = PortfolioManager.shared
-        let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolio, maxCoins: 4)
+        let maxCoins = family == .systemLarge ? 6 : 4
+        let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolio, maxCoins: maxCoins)
 
         return SimpleEntry(
             date: Date(),
@@ -71,13 +72,16 @@ struct CryptoWidgetEntryView: View {
             switch family {
             case .systemSmall:
                 smallWidget
+            case .systemLarge:
+                largeWidget
             default:
                 mediumWidget
             }
         }
         .padding()
-        .background(backgroundGradient)
+        .widgetContainerBackground(backgroundGradient)
     }
+
 
     private var backgroundGradient: some View {
         LinearGradient(
@@ -163,6 +167,48 @@ struct CryptoWidgetEntryView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+
+    private var largeWidget: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Crypto Portfolio")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text(entry.showsRealHoldings ? "Total Portfolio Tracking" : "Top Market Overview")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Text(entry.portfolioValue.formattedCurrency())
+                    .font(.title2.weight(.bold))
+                    .foregroundColor(.white)
+            }
+
+            SparklineView(
+                data: entry.totalHistory,
+                lineColor: accentColor,
+                fillColor: accentColor
+            )
+            .frame(height: 80)
+
+            Divider()
+                .background(Color.white.opacity(0.15))
+
+            if entry.coins.isEmpty {
+                emptyState
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(entry.coins.prefix(6)) { coin in
+                        detailedCoinRow(for: coin)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
 
     private var headerView: some View {
         HStack {
@@ -283,6 +329,7 @@ struct MockData {
             id: "bitcoin",
             symbol: "btc",
             name: "Bitcoin",
+            image: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
             currentPrice: 95431,
             priceChangePercentage24H: 4.4,
             sparklineIn7D: SparklineData(price: [93500, 93820, 94210, 94550, 94900, 95220, 95431])
@@ -291,6 +338,7 @@ struct MockData {
             id: "ethereum",
             symbol: "eth",
             name: "Ethereum",
+            image: "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
             currentPrice: 3410,
             priceChangePercentage24H: 2.1,
             sparklineIn7D: SparklineData(price: [3280, 3300, 3325, 3350, 3378, 3395, 3410])
@@ -299,3 +347,24 @@ struct MockData {
 
     static let history = [10250.0, 10400.0, 10320.0, 10640.0, 10710.0, 10890.0, 10980.0]
 }
+
+extension View {
+    func widgetContainerBackground<B: View>(_ backgroundView: B) -> some View {
+        #if os(iOS)
+        if #available(iOS 17.0, *) {
+            return AnyView(self.containerBackground(for: .widget) { backgroundView })
+        } else {
+            return AnyView(self.background(backgroundView))
+        }
+        #elseif os(macOS)
+        if #available(macOS 14.0, *) {
+            return AnyView(self.containerBackground(for: .widget) { backgroundView })
+        } else {
+            return AnyView(self.background(backgroundView))
+        }
+        #else
+        return AnyView(self.background(backgroundView))
+        #endif
+    }
+}
+

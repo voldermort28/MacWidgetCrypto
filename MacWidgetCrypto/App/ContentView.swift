@@ -105,26 +105,22 @@ struct CoinRowView: View {
     @State var amount: Double
     
     var body: some View {
-        HStack {
-            AsyncImage(url: URL(string: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png")) { image in
-                image.resizable() // Placeholder, real app should map coin image URL if available in model
-            } placeholder: {
-                Circle().fill(Color.gray).frame(width: 30, height: 30)
-            }
-            .frame(width: 30, height: 30)
+        HStack(spacing: 12) {
+            coinImageView
             
-            VStack(alignment: .leading) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(coin.name).font(.headline)
                 Text(coin.symbol.uppercased()).font(.subheadline).foregroundColor(.secondary)
             }
             
             Spacer()
             
-            VStack(alignment: .trailing) {
+            VStack(alignment: .trailing, spacing: 2) {
                 Text(coin.formattedPrice)
+                    .font(.body.weight(.semibold))
                 Text(coin.formattedChange)
                     .foregroundColor(coin.priceChangePercentage24H >= 0 ? .green : .red)
-                    .font(.caption)
+                    .font(.caption.weight(.medium))
             }
             
             // Editable TextField for Amount
@@ -137,5 +133,35 @@ struct CoinRowView: View {
                 }
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var coinImageView: some View {
+        if let imageUrl = coin.image, let url = URL(string: imageUrl) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable()
+                        .aspectRatio(contentMode: .fit)
+                default:
+                    coinPlaceholder
+                }
+            }
+            .frame(width: 32, height: 32)
+            .clipShape(Circle())
+        } else {
+            coinPlaceholder
+        }
+    }
+
+    private var coinPlaceholder: some View {
+        Circle()
+            .fill(Color.orange.opacity(0.85))
+            .frame(width: 32, height: 32)
+            .overlay(
+                Text(String(coin.symbol.uppercased().prefix(1)))
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+            )
     }
 }

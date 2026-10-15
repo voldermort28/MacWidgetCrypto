@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    permissions:
+      contents: write
+
 
     steps:
     - name: Checkout code
@@ -69,3 +72,24 @@ jobs:
       with:
         name: Crypto-Widget-App
         path: build/Build/Products/Release/MacWidgetCrypto.app.zip
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v1.0.${{ github.run_number }}
+        name: "MacWidgetCrypto v1.0.${{ github.run_number }}"
+        body: |
+          ## Automated Release v1.0.${{ github.run_number }}
+          - **Commit**: `${{ github.sha }}`
+          - **Branch**: `${{ github.ref_name }}`
+          - **Build**: `${{ github.run_number }}`
+
+          ### Assets:
+          - `MacWidgetCrypto.app.zip`: macOS Application bundle (bao gồm CryptoWidget extension)
+        files: |
+          build/Build/Products/Release/MacWidgetCrypto.app.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
