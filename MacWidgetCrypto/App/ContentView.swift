@@ -1,9 +1,38 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
+enum ClipboardHelper {
+    static func copy(_ text: String) {
+        #if os(iOS)
+        UIPasteboard.general.string = text
+        #elseif os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
+    }
+    
+    static func paste() -> String? {
+        #if os(iOS)
+        return UIPasteboard.general.string
+        #elseif os(macOS)
+        return NSPasteboard.general.string(forType: .string)
+        #else
+        return nil
+        #endif
+    }
+}
 
 struct ContentView: View {
     @StateObject private var portfolioManager = PortfolioManager.shared
     @State private var coins: [Coin] = []
     @State private var isLoading = false
+    @State private var errorMessage: String? = nil
+    @State private var showingAddCoinSheet = false
+    @State private var showingSyncSheet = false
 
     private var snapshot: PortfolioSnapshot {
         PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolioManager, maxCoins: 4)
@@ -13,32 +42,73 @@ struct ContentView: View {
         guard let first = snapshot.totalHistory.first, let last = snapshot.totalHistory.last else {
             return .green
         }
-
         return last >= first ? .green : .red
     }
     
     var body: some View {
-        VStack {
-            if isLoading {
+        VStack(spacing: 0) {
+            if let error = errorMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Button("Thử lại") {
+                        loadData()
+                    }
+                    .font(.caption.bold())
+                    Button(action: { errorMessage = nil }) {
+                        Image(systemName: "xmark")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(BorderlessButtonStyle())
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.15))
+            }
+
+            if isLoading && coins.isEmpty {
                 ProgressView("Đang tải dữ liệu...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     Section(header: Text("Tài sản của tôi")) {
                         HStack {
-                            Text("Tổng Giá Trị")
-                                .font(.headline)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Tổng Giá Trị")
+                                    .font(.headline)
+                                Text(snapshot.showsRealHoldings ? "\(coins.filter { portfolioManager.getAmount(for: $0.id) > 0 }.count) tài sản đang theo dõi" : "Chưa có coin nắm giữ")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
                             Spacer()
                             Text(portfolioManager.calculateTotalValue(coins: coins).formattedCurrency())
                                 .font(.title2)
                                 .bold()
                                 .foregroundColor(.green)
                         }
+
+                        Button(action: { showingSyncSheet = true }) {
+                            HStack {
+                                Image(systemName: "arrow.triangle.2.circlepath.icloud")
+                                    .foregroundColor(.blue)
+                                Text("Đồng bộ & Sao lưu danh mục (Mac ↔ iOS)")
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
 
                     Section(header: Text("Biểu đồ danh mục")) {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text(snapshot.showsRealHoldings ? "Danh mục hiện tại" : "Xem trước từ top coin")
+                            Text(snapshot.showsRealHoldings ? "Danh mục hiện tại" : "Chưa có coin trong danh mục")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
 
@@ -51,30 +121,73 @@ struct ContentView: View {
                                     lineColor: chartAccentColor,
                                     fillColor: chartAccentColor
                                 )
-                                .frame(height: 140)
+                                .frame(height: 120)
                             } else {
                                 Text("Chưa có đủ dữ liệu để vẽ chart. Hãy nhập số lượng coin bạn đang nắm giữ.")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
                         }
+                        .padding(.vertical, 4)
+                    }
+
+                    Section(header: HStack {
+                        Text("Danh sách Coin (\(coins.count))")
+                        Spacer()
+                        Button(action: { showingAddCoinSheet = true }) {
+                            Label("Thêm Coin", systemImage: "plus.circle.fill")
+                                .font(.caption.bold())
+                                .foregroundColor(.blue)
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+                    }) {
+                        if coins.isEmpty {
+                            VStack(spacing: 8) {
+                                Text("Danh sách coin trống")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Button("Thêm Coin mới") {
+                                    showingAddCoinSheet = true
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 12)
+                        } else {
+                            ForEach(coins) { coin in
+                                CoinRowView(
+                                    coin: coin,
+                                    amount: portfolioManager.getAmount(for: coin.id),
+                                    onDelete: {
+                                        deleteCoin(coin)
+                                    }
+                                )
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        deleteCoin(coin)
+                                    } label: {
+                                        Label("Xóa", systemImage: "trash")
+                                    }
+                                }
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        deleteCoin(coin)
+                                    } label: {
+                                        Label("Xóa khỏi danh sách", systemImage: "trash")
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Section(header: Text("Widget")) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Widget không tự hiện trong cửa sổ app. Trên macOS, hãy Control-click lên Desktop rồi chọn Edit Widgets, sau đó tìm \"Crypto Portfolio\" hoặc \"MacWidgetCrypto\" để thêm ra Desktop hoặc Notification Center.")
+                            Text("Trên macOS: Control-click lên Desktop > Edit Widgets > Tìm \"Crypto Portfolio\" hoặc \"MacWidgetCrypto\".")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
-
-                            Text("Nếu vẫn chưa thấy trong gallery, hãy đóng app, copy app vào thư mục Applications, mở lại app một lần rồi thử Edit Widgets lại.")
+                            Text("Trên iOS: Chạm giữ Home Screen > Nhấn dấu (+) ở góc trên > Thêm Widget.")
                                 .font(.footnote)
                                 .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    Section(header: Text("Danh sách Coin")) {
-                        ForEach(coins) { coin in
-                            CoinRowView(coin: coin, amount: portfolioManager.getAmount(for: coin.id))
                         }
                     }
                 }
@@ -82,38 +195,88 @@ struct ContentView: View {
         }
         .navigationTitle("MacCrypto")
         .toolbar {
-            Button(action: loadData) {
-                Image(systemName: "arrow.clockwise")
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 12) {
+                    Button(action: { showingAddCoinSheet = true }) {
+                        Image(systemName: "plus")
+                    }
+                    .help("Thêm coin mới vào danh sách")
+
+                    Button(action: loadData) {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .help("Làm mới giá")
+                }
             }
         }
-        .onAppear(perform: loadData)
+        .sheet(isPresented: $showingAddCoinSheet) {
+            AddCoinView {
+                showingAddCoinSheet = false
+                loadData()
+            }
+        }
+        .sheet(isPresented: $showingSyncSheet) {
+            SyncView {
+                loadData()
+            }
+        }
+        .onAppear {
+            let cached = CryptoService.shared.getCachedCoins()
+            if !cached.isEmpty {
+                self.coins = cached
+            }
+            loadData()
+        }
     }
     
     func loadData() {
-        isLoading = true
-        CryptoService.shared.fetchCoins { fetchedCoins in
+        if coins.isEmpty {
+            isLoading = true
+        }
+
+        portfolioManager.reloadHoldings()
+        let trackedIds = portfolioManager.trackedCoinIds
+        CryptoService.shared.fetchCoins(for: trackedIds) { fetchedCoins in
             DispatchQueue.main.async {
-                self.coins = fetchedCoins ?? []
                 self.isLoading = false
+                if let fetchedCoins = fetchedCoins, !fetchedCoins.isEmpty {
+                    self.coins = fetchedCoins
+                    self.errorMessage = nil
+                } else {
+                    if self.coins.isEmpty {
+                        self.coins = CryptoService.shared.getCachedCoins()
+                    }
+                    self.errorMessage = "Không thể làm mới giá lúc này (giới hạn CoinGecko API). Đang hiển thị dữ liệu lưu gần nhất."
+                }
             }
         }
+    }
+
+    func deleteCoin(_ coin: Coin) {
+        portfolioManager.removeTrackedCoin(id: coin.id)
+        coins.removeAll { $0.id == coin.id }
     }
 }
 
 struct CoinRowView: View {
     let coin: Coin
     @State var amount: Double
+    var onDelete: () -> Void
     
     var body: some View {
         HStack(spacing: 12) {
             coinImageView
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(coin.name).font(.headline)
-                Text(coin.symbol.uppercased()).font(.subheadline).foregroundColor(.secondary)
+                Text(coin.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(coin.symbol.uppercased())
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
             }
             
-            Spacer()
+            Spacer(minLength: 8)
             
             VStack(alignment: .trailing, spacing: 2) {
                 Text(coin.formattedPrice)
@@ -123,7 +286,6 @@ struct CoinRowView: View {
                     .font(.caption.weight(.medium))
             }
             
-            // Editable TextField for Amount
             TextField("Số lượng", value: $amount, format: .number)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .frame(width: 80)
@@ -131,6 +293,13 @@ struct CoinRowView: View {
                 .onChange(of: amount) { newValue in
                     PortfolioManager.shared.updateHolding(coinId: coin.id, amount: newValue)
                 }
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+                    .foregroundColor(.red.opacity(0.8))
+            }
+            .buttonStyle(BorderlessButtonStyle())
+            .help("Xóa coin")
         }
         .padding(.vertical, 4)
     }
@@ -163,5 +332,272 @@ struct CoinRowView: View {
                     .font(.caption.bold())
                     .foregroundColor(.white)
             )
+    }
+}
+
+struct AddCoinView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @ObservedObject var portfolioManager = PortfolioManager.shared
+    @State private var searchQuery = ""
+    @State private var searchResults: [CoinSearchResult] = []
+    @State private var isSearching = false
+    var onCoinAdded: () -> Void
+
+    var body: some View {
+        NavigationView {
+            List {
+                Section(header: Text("Tìm kiếm Coin")) {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                        TextField("Nhập tên hoặc ký hiệu (vd: sui, pepe, avax...)", text: $searchQuery)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .onSubmit {
+                                performSearch()
+                            }
+                        if !searchQuery.isEmpty {
+                            Button(action: { searchQuery = ""; searchResults = [] }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
+                        Button("Tìm") {
+                            performSearch()
+                        }
+                        .disabled(searchQuery.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
+                    }
+                    .padding(.vertical, 4)
+
+                    if isSearching {
+                        HStack {
+                            Spacer()
+                            ProgressView("Đang tìm kiếm...")
+                            Spacer()
+                        }
+                    } else if !searchResults.isEmpty {
+                        ForEach(searchResults) { result in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(result.name)
+                                        .font(.headline)
+                                    Text(result.symbol.uppercased())
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if portfolioManager.isTracking(id: result.id) {
+                                    Label("Đã thêm", systemImage: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                        .font(.caption)
+                                } else {
+                                    Button("Thêm") {
+                                        portfolioManager.addTrackedCoin(id: result.id)
+                                        onCoinAdded()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+
+                Section(header: Text("Coin phổ biến")) {
+                    ForEach(CryptoService.popularCoins, id: \.id) { popular in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(popular.name)
+                                    .font(.headline)
+                                Text(popular.symbol)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if portfolioManager.isTracking(id: popular.id) {
+                                Label("Đã thêm", systemImage: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                    .font(.caption)
+                            } else {
+                                Button("Thêm") {
+                                    portfolioManager.addTrackedCoin(id: popular.id)
+                                    onCoinAdded()
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+            .navigationTitle("Thêm Coin mới")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Đóng") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private func performSearch() {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        isSearching = true
+        Task {
+            do {
+                let results = try await CryptoService.shared.searchCoins(query: query)
+                await MainActor.run {
+                    self.searchResults = results
+                    self.isSearching = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.searchResults = []
+                    self.isSearching = false
+                }
+            }
+        }
+    }
+}
+
+struct SyncView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @ObservedObject var syncManager = SyncManager.shared
+    @State private var syncKeyInput = ""
+    @State private var alertMessage = ""
+    @State private var showAlert = false
+    var onSyncComplete: () -> Void
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("1. Đồng bộ qua Universal Clipboard (Mac ↔ iPhone)")) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Sử dụng bộ nhớ tạm của Apple (hoạt động tức thì giữa Mac và iPhone qua Wi-Fi / Bluetooth mà không cần cài đặt server).")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        HStack {
+                            Button("Sao chép dữ liệu (Copy)") {
+                                if let json = PortfolioManager.shared.exportPortfolioJSON() {
+                                    ClipboardHelper.copy(json)
+                                    alertMessage = "Đã sao chép dữ liệu danh mục vào Clipboard! Trên thiết bị kia, hãy bấm 'Dán & Cập nhật'."
+                                    showAlert = true
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("Dán & Cập nhật (Paste)") {
+                                if let text = ClipboardHelper.paste(), PortfolioManager.shared.importPortfolioJSON(text) {
+                                    alertMessage = "Đã đồng bộ thành công dữ liệu từ Clipboard!"
+                                    showAlert = true
+                                    onSyncComplete()
+                                } else {
+                                    alertMessage = "Không tìm thấy dữ liệu hợp lệ trong Clipboard."
+                                    showAlert = true
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(.top, 4)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section(header: Text("2. Đồng bộ qua Cloud Sync Key")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Nhập cùng một mã Sync Key trên cả MacBook và iPhone để đồng bộ qua đám mây.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        HStack {
+                            TextField("Ví dụ: volpi_crypto_key", text: $syncKeyInput)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .disableAutocorrection(true)
+                            Button("Lưu Key") {
+                                syncManager.saveSyncKey(syncKeyInput)
+                                alertMessage = "Đã lưu Sync Key!"
+                                showAlert = true
+                            }
+                        }
+
+                        HStack(spacing: 12) {
+                            Button(action: uploadData) {
+                                HStack {
+                                    Image(systemName: "arrow.up.circle.fill")
+                                    Text("Tải lên Cloud")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(syncManager.isSyncing)
+
+                            Button(action: downloadData) {
+                                HStack {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                    Text("Tải về máy")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(syncManager.isSyncing)
+                        }
+
+                        if syncManager.isSyncing {
+                            ProgressView("Đang đồng bộ...")
+                                .font(.caption)
+                        }
+
+                        if let status = syncManager.lastSyncStatus {
+                            Text(status)
+                                .font(.caption2)
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section(header: Text("3. Apple iCloud (Tự động)")) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("iCloud Key-Value Store được tích hợp sẵn. Khi ứng dụng chạy trên macOS hoặc thiết bị có tài khoản Apple ID, dữ liệu sẽ tự động đồng bộ ngầm.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Đồng bộ danh mục")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Xong") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+            }
+            .alert(isPresented: $showAlert) {
+                Alert(title: Text("Đồng bộ"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+            }
+            .onAppear {
+                self.syncKeyInput = syncManager.syncKey
+            }
+        }
+    }
+
+    private func uploadData() {
+        syncManager.saveSyncKey(syncKeyInput)
+        syncManager.uploadToCloud { success, msg in
+            alertMessage = msg
+            showAlert = true
+        }
+    }
+
+    private func downloadData() {
+        syncManager.saveSyncKey(syncKeyInput)
+        syncManager.downloadFromCloud { success, msg in
+            alertMessage = msg
+            showAlert = true
+            if success {
+                onSyncComplete()
+            }
+        }
     }
 }

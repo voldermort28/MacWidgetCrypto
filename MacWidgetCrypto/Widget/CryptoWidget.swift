@@ -20,11 +20,17 @@ struct Provider: TimelineProvider {
 
         Task {
             do {
-                let coins = try await CryptoService.shared.fetchCoins()
+                let trackedIds = PortfolioManager.shared.trackedCoinIds
+                let coins = try await CryptoService.shared.fetchCoins(for: trackedIds)
                 let entry = makeEntry(from: coins, family: context.family)
                 completion(entry)
             } catch {
-                completion(placeholder(in: context))
+                let cached = CryptoService.shared.getCachedCoins()
+                if !cached.isEmpty {
+                    completion(makeEntry(from: cached, family: context.family))
+                } else {
+                    completion(placeholder(in: context))
+                }
             }
         }
     }
@@ -34,10 +40,16 @@ struct Provider: TimelineProvider {
             let entry: SimpleEntry
 
             do {
-                let coins = try await CryptoService.shared.fetchCoins()
+                let trackedIds = PortfolioManager.shared.trackedCoinIds
+                let coins = try await CryptoService.shared.fetchCoins(for: trackedIds)
                 entry = makeEntry(from: coins, family: context.family)
             } catch {
-                entry = placeholder(in: context)
+                let cached = CryptoService.shared.getCachedCoins()
+                if !cached.isEmpty {
+                    entry = makeEntry(from: cached, family: context.family)
+                } else {
+                    entry = placeholder(in: context)
+                }
             }
 
             let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date().addingTimeInterval(900)
