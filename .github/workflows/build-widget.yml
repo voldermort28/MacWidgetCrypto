@@ -43,8 +43,8 @@ jobs:
           build
 
         echo "Applying ad-hoc code signing with entitlements for macOS app and widget..."
-        codesign --force --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "build/Build/Products/Release/MacWidgetCrypto.app/Contents/PlugIns/CryptoWidget.appex"
-        codesign --force --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "build/Build/Products/Release/MacWidgetCrypto.app"
+        codesign --force --options runtime --sign - --entitlements "MacWidgetCrypto/Widget/CryptoWidget.entitlements" "build/Build/Products/Release/MacWidgetCrypto.app/Contents/PlugIns/CryptoWidget.appex"
+        codesign --force --options runtime --sign - --entitlements "MacWidgetCrypto/App/MacWidgetCrypto.entitlements" "build/Build/Products/Release/MacWidgetCrypto.app"
 
     - name: Build iOS App & Widget (IPA for TrollStore)
       run: |
