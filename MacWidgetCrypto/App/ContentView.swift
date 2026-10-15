@@ -230,23 +230,14 @@ struct ContentView: View {
                 showingAddCoinSheet = false
                 loadData()
             }
-            #if os(macOS)
-            .frame(minWidth: 500, idealWidth: 540, minHeight: 520, idealHeight: 600)
-            #endif
         }
         .sheet(isPresented: $showingSyncSheet) {
             SyncView {
                 loadData()
             }
-            #if os(macOS)
-            .frame(minWidth: 520, idealWidth: 560, minHeight: 540, idealHeight: 620)
-            #endif
         }
         .sheet(isPresented: $showingLogsSheet) {
             LogsView()
-            #if os(macOS)
-            .frame(minWidth: 550, idealWidth: 600, minHeight: 450, idealHeight: 550)
-            #endif
         }
         .onAppear {
             let cached = CryptoService.shared.getCachedCoins()
@@ -279,6 +270,22 @@ struct ContentView: View {
             #if canImport(WidgetKit)
             WidgetCenter.shared.reloadAllTimelines()
             #endif
+        }
+        #elseif os(iOS)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            AppLogger.info("iOS vào Foreground. Cập nhật giá ngay lập tức.")
+            loadData(isBackgroundRefresh: false)
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Xong") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
         }
         #endif
     }
@@ -339,9 +346,23 @@ struct ContentView: View {
 
 struct CoinRowView: View {
     let coin: Coin
-    @State var amount: Double
+    let initialAmount: Double
     var onDelete: () -> Void
+    @State private var amountString: String
     
+    init(coin: Coin, amount: Double, onDelete: @escaping () -> Void) {
+        self.coin = coin
+        self.initialAmount = amount
+        self.onDelete = onDelete
+        let initialText: String
+        if amount > 0 {
+            initialText = amount.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", amount) : String(amount)
+        } else {
+            initialText = ""
+        }
+        self._amountString = State(initialValue: initialText)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             coinImageView
@@ -365,12 +386,20 @@ struct CoinRowView: View {
                     .font(.caption.weight(.medium))
             }
             
-            TextField("Số lượng", value: $amount, format: .number)
+            TextField("0.0", text: $amountString)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                .frame(width: 80)
+                .frame(width: 85)
                 .multilineTextAlignment(.trailing)
-                .onChange(of: amount) { newValue in
-                    PortfolioManager.shared.updateHolding(coinId: coin.id, amount: newValue)
+                #if os(iOS)
+                .keyboardType(.decimalPad)
+                #endif
+                .onChange(of: amountString) { newStr in
+                    let sanitized = newStr.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)
+                    if sanitized.isEmpty {
+                        PortfolioManager.shared.updateHolding(coinId: coin.id, amount: 0)
+                    } else if let parsed = Double(sanitized), parsed >= 0 {
+                        PortfolioManager.shared.updateHolding(coinId: coin.id, amount: parsed)
+                    }
                 }
 
             Button(role: .destructive, action: onDelete) {
@@ -424,112 +453,103 @@ struct AddCoinView: View {
     var onCoinAdded: () -> Void
 
     var body: some View {
+        #if os(iOS)
         NavigationView {
-            VStack(spacing: 0) {
-                // Pinned Search Header
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                    
-                    TextField("Tìm theo mã hoặc tên (vd: BTC, SOL, SUI, PEPE...)", text: $searchQuery)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .onSubmit {
-                            performSearch()
+            coinListContent
+                .navigationTitle("Thêm Coin mới")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Đóng") {
+                            presentationMode.wrappedValue.dismiss()
                         }
-                    
-                    if !searchQuery.isEmpty {
-                        Button(action: {
-                            searchQuery = ""
-                            searchResults = []
-                            hasSearched = false
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(BorderlessButtonStyle())
                     }
-                    
-                    Button("Tìm kiếm") {
+                }
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+        #else
+        VStack(spacing: 0) {
+            HStack {
+                Text("Thêm Coin mới")
+                    .font(.headline)
+                Spacer()
+                Button("Đóng") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+            }
+            .padding()
+
+            Divider()
+
+            coinListContent
+        }
+        .frame(minWidth: 480, idealWidth: 540, minHeight: 520, idealHeight: 600)
+        #endif
+    }
+
+    private var coinListContent: some View {
+        VStack(spacing: 0) {
+            // Pinned Search Header
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                
+                TextField("Tìm theo mã hoặc tên (vd: BTC, SOL, SUI, PEPE...)", text: $searchQuery)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .onSubmit {
                         performSearch()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(searchQuery.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.secondary.opacity(0.06))
-
-                Divider()
-
-                List {
-                    if isSearching {
-                        HStack {
-                            Spacer()
-                            ProgressView("Đang tìm kiếm từ Binance...")
-                                .padding(.vertical, 24)
-                            Spacer()
-                        }
-                    } else if !searchResults.isEmpty {
-                        Section(header: Text("Kết quả tìm kiếm (\(searchResults.count))")) {
-                            ForEach(searchResults) { result in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(result.name)
-                                            .font(.headline)
-                                        Text(result.symbol.uppercased())
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                    if portfolioManager.isTracking(id: result.id) {
-                                        Label("Đã thêm", systemImage: "checkmark.circle.fill")
-                                            .foregroundColor(.green)
-                                            .font(.subheadline.bold())
-                                    } else {
-                                        Button("Thêm") {
-                                            portfolioManager.addTrackedCoin(id: result.id)
-                                            onCoinAdded()
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                    }
-                                }
-                                .padding(.vertical, 4)
-                            }
-                        }
-                    } else if hasSearched {
-                        Section {
-                            VStack(spacing: 8) {
-                                Image(systemName: "questionmark.folder")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(.secondary)
-                                Text("Không tìm thấy cặp giao dịch nào phù hợp trên Binance với từ khóa \"\(searchQuery)\"")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.vertical, 16)
-                        }
+                
+                if !searchQuery.isEmpty {
+                    Button(action: {
+                        searchQuery = ""
+                        searchResults = []
+                        hasSearched = false
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
                     }
+                    .buttonStyle(BorderlessButtonStyle())
+                }
+                
+                Button("Tìm kiếm") {
+                    performSearch()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(searchQuery.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.secondary.opacity(0.06))
 
-                    Section(header: Text("Coin phổ biến")) {
-                        ForEach(CryptoService.popularCoins, id: \.id) { popular in
+            Divider()
+
+            List {
+                if isSearching {
+                    HStack {
+                        Spacer()
+                        ProgressView("Đang tìm kiếm từ Binance...")
+                            .padding(.vertical, 24)
+                        Spacer()
+                    }
+                } else if !searchResults.isEmpty {
+                    Section(header: Text("Kết quả tìm kiếm (\(searchResults.count))")) {
+                        ForEach(searchResults) { result in
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(popular.name)
+                                    Text(result.name)
                                         .font(.headline)
-                                    Text(popular.symbol)
+                                    Text(result.symbol.uppercased())
                                         .font(.subheadline)
                                         .foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                if portfolioManager.isTracking(id: popular.id) {
+                                if portfolioManager.isTracking(id: result.id) {
                                     Label("Đã thêm", systemImage: "checkmark.circle.fill")
                                         .foregroundColor(.green)
                                         .font(.subheadline.bold())
                                 } else {
                                     Button("Thêm") {
-                                        portfolioManager.addTrackedCoin(id: popular.id)
+                                        portfolioManager.addTrackedCoin(id: result.id)
                                         onCoinAdded()
                                     }
                                     .buttonStyle(.borderedProminent)
@@ -538,21 +558,50 @@ struct AddCoinView: View {
                             .padding(.vertical, 4)
                         }
                     }
+                } else if hasSearched {
+                    Section {
+                        VStack(spacing: 8) {
+                            Image(systemName: "questionmark.folder")
+                                .font(.system(size: 28))
+                                .foregroundColor(.secondary)
+                            Text("Không tìm thấy cặp giao dịch nào phù hợp trên Binance với từ khóa \"\(searchQuery)\"")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 16)
+                    }
                 }
-            }
-            .navigationTitle("Thêm Coin mới")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Đóng") {
-                        presentationMode.wrappedValue.dismiss()
+
+                Section(header: Text("Coin phổ biến")) {
+                    ForEach(CryptoService.popularCoins, id: \.id) { popular in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(popular.name)
+                                    .font(.headline)
+                                Text(popular.symbol)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if portfolioManager.isTracking(id: popular.id) {
+                                Label("Đã thêm", systemImage: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                    .font(.subheadline.bold())
+                            } else {
+                                Button("Thêm") {
+                                    portfolioManager.addTrackedCoin(id: popular.id)
+                                    onCoinAdded()
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
                 }
             }
         }
-        .navigationViewStyle(StackNavigationViewStyle())
-        #if os(macOS)
-        .frame(minWidth: 480, idealWidth: 540, minHeight: 520, idealHeight: 600)
-        #endif
     }
 
     private func performSearch() {
@@ -599,139 +648,159 @@ struct SyncView: View {
     var onSyncComplete: () -> Void
 
     var body: some View {
+        #if os(iOS)
         NavigationView {
-            Form {
-                Section(header: Text("1. Đồng bộ qua Universal Clipboard (Mac ↔ iPhone)")) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Sử dụng bộ nhớ tạm của Apple (hoạt động tức thì giữa Mac và iPhone qua Wi-Fi / Bluetooth mà không cần cài đặt server).")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        HStack {
-                            Button("Sao chép dữ liệu (Copy)") {
-                                if let json = PortfolioManager.shared.exportPortfolioJSON() {
-                                    ClipboardHelper.copy(json)
-                                    alertMessage = "Đã sao chép dữ liệu danh mục vào Clipboard! Trên thiết bị kia, hãy bấm 'Dán & Cập nhật'."
-                                    showAlert = true
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            Button("Dán & Cập nhật (Paste)") {
-                                if let text = ClipboardHelper.paste(), PortfolioManager.shared.importPortfolioJSON(text) {
-                                    alertMessage = "Đã đồng bộ thành công dữ liệu từ Clipboard!"
-                                    showAlert = true
-                                    onSyncComplete()
-                                } else {
-                                    alertMessage = "Không tìm thấy dữ liệu hợp lệ trong Clipboard."
-                                    showAlert = true
-                                }
-                            }
-                            .buttonStyle(.bordered)
+            formContent
+                .navigationTitle("Đồng bộ danh mục")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Xong") {
+                            presentationMode.wrappedValue.dismiss()
                         }
-                        .padding(.top, 4)
                     }
-                    .padding(.vertical, 4)
                 }
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+        #else
+        VStack(spacing: 0) {
+            HStack {
+                Text("Đồng bộ danh mục")
+                    .font(.headline)
+                Spacer()
+                Button("Xong") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+            }
+            .padding()
 
-                Section(header: Text("2. Đồng bộ qua Cloud Sync Key")) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Nhập cùng một mã Sync Key trên cả MacBook và iPhone để đồng bộ qua đám mây.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+            Divider()
 
-                        HStack {
-                            TextField("Ví dụ: volpi_crypto_key", text: $syncKeyInput)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .disableAutocorrection(true)
-                            Button("Lưu Key") {
-                                syncManager.saveSyncKey(syncKeyInput)
-                                alertMessage = "Đã lưu Sync Key!"
+            formContent
+        }
+        .frame(minWidth: 520, idealWidth: 560, minHeight: 540, idealHeight: 620)
+        #endif
+    }
+
+    private var formContent: some View {
+        Form {
+            Section(header: Text("1. Đồng bộ qua Universal Clipboard (Mac ↔ iPhone)")) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Sử dụng bộ nhớ tạm của Apple (hoạt động tức thì giữa Mac và iPhone qua Wi-Fi / Bluetooth mà không cần cài đặt server).")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    HStack {
+                        Button("Sao chép dữ liệu (Copy)") {
+                            if let json = PortfolioManager.shared.exportPortfolioJSON() {
+                                ClipboardHelper.copy(json)
+                                alertMessage = "Đã sao chép dữ liệu danh mục vào Clipboard! Trên thiết bị kia, hãy bấm 'Dán & Cập nhật'."
                                 showAlert = true
                             }
                         }
+                        .buttonStyle(.borderedProminent)
 
-                        HStack(spacing: 12) {
-                            Button(action: uploadData) {
-                                HStack {
-                                    Image(systemName: "arrow.up.circle.fill")
-                                    Text("Tải lên Cloud")
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(syncManager.isSyncing)
-
-                            Button(action: downloadData) {
-                                HStack {
-                                    Image(systemName: "arrow.down.circle.fill")
-                                    Text("Tải về máy")
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(syncManager.isSyncing)
-                        }
-
-                        if syncManager.isSyncing {
-                            ProgressView("Đang đồng bộ...")
-                                .font(.caption)
-                        }
-
-                        if let status = syncManager.lastSyncStatus {
-                            Text(status)
-                                .font(.caption2)
-                                .foregroundColor(.blue)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                Section(header: Text("3. Apple iCloud (Tự động)")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("iCloud Key-Value Store được tích hợp sẵn. Khi ứng dụng chạy trên macOS hoặc thiết bị có tài khoản Apple ID, dữ liệu sẽ tự động đồng bộ ngầm.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                Section(header: Text("4. Nhật ký Hệ thống (Logs)")) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Xem trạng thái mạng, kết nối Binance và lịch sử làm mới dữ liệu.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Button(action: { showingLogs = true }) {
-                            HStack {
-                                Image(systemName: "terminal")
-                                Text("Xem Nhật ký chi tiết (\(AppLogger.shared.logs.count) bản ghi)")
+                        Button("Dán & Cập nhật (Paste)") {
+                            if let text = ClipboardHelper.paste(), PortfolioManager.shared.importPortfolioJSON(text) {
+                                alertMessage = "Đã đồng bộ thành công dữ liệu từ Clipboard!"
+                                showAlert = true
+                                onSyncComplete()
+                            } else {
+                                alertMessage = "Không tìm thấy dữ liệu hợp lệ trong Clipboard."
+                                showAlert = true
                             }
                         }
                         .buttonStyle(.bordered)
                     }
-                    .padding(.vertical, 4)
+                    .padding(.top, 4)
                 }
+                .padding(.vertical, 4)
             }
-            .navigationTitle("Đồng bộ danh mục")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Xong") {
-                        presentationMode.wrappedValue.dismiss()
+
+            Section(header: Text("2. Đồng bộ qua Cloud Sync Key")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Nhập cùng một mã Sync Key trên cả MacBook và iPhone để đồng bộ qua đám mây.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    HStack {
+                        TextField("Ví dụ: volpi_crypto_key", text: $syncKeyInput)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .disableAutocorrection(true)
+                        Button("Lưu Key") {
+                            syncManager.saveSyncKey(syncKeyInput)
+                            alertMessage = "Đã lưu Sync Key!"
+                            showAlert = true
+                        }
+                    }
+
+                    HStack(spacing: 12) {
+                        Button(action: uploadData) {
+                            HStack {
+                                Image(systemName: "arrow.up.circle.fill")
+                                Text("Tải lên Cloud")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(syncManager.isSyncing)
+
+                        Button(action: downloadData) {
+                            HStack {
+                                Image(systemName: "arrow.down.circle.fill")
+                                Text("Tải về máy")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(syncManager.isSyncing)
+                    }
+
+                    if syncManager.isSyncing {
+                        ProgressView("Đang đồng bộ...")
+                            .font(.caption)
+                    }
+
+                    if let status = syncManager.lastSyncStatus {
+                        Text(status)
+                            .font(.caption2)
+                            .foregroundColor(.blue)
                     }
                 }
+                .padding(.vertical, 4)
             }
-            .sheet(isPresented: $showingLogs) {
-                LogsView()
+
+            Section(header: Text("3. Apple iCloud (Tự động)")) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("iCloud Key-Value Store được tích hợp sẵn. Khi ứng dụng chạy trên macOS hoặc thiết bị có tài khoản Apple ID, dữ liệu sẽ tự động đồng bộ ngầm.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
-            .alert(isPresented: $showAlert) {
-                Alert(title: Text("Đồng bộ"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
-            }
-            .onAppear {
-                self.syncKeyInput = syncManager.syncKey
+
+            Section(header: Text("4. Nhật ký Hệ thống (Logs)")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Xem trạng thái mạng, kết nối Binance và lịch sử làm mới dữ liệu.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Button(action: { showingLogs = true }) {
+                        HStack {
+                            Image(systemName: "terminal")
+                            Text("Xem Nhật ký chi tiết (\(AppLogger.shared.logs.count) bản ghi)")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.vertical, 4)
             }
         }
-        .navigationViewStyle(StackNavigationViewStyle())
-        #if os(macOS)
-        .frame(minWidth: 520, idealWidth: 560, minHeight: 540, idealHeight: 620)
-        #endif
+        .sheet(isPresented: $showingLogs) {
+            LogsView()
+        }
+        .alert(isPresented: $showAlert) {
+            Alert(title: Text("Đồng bộ"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+        }
+        .onAppear {
+            self.syncKeyInput = syncManager.syncKey
+        }
     }
 
     @State private var showingLogs = false
@@ -762,88 +831,108 @@ struct LogsView: View {
     @State private var copyNotice = false
 
     var body: some View {
+        #if os(iOS)
         NavigationView {
-            VStack(spacing: 0) {
-                if logger.logs.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(.system(size: 40))
-                            .foregroundColor(.secondary)
-                        Text("Chưa có bản ghi nhật ký nào.")
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 6) {
-                                ForEach(Array(logger.logs.enumerated()), id: \.offset) { index, log in
-                                    Text(log)
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundColor(logColor(for: log))
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .id(index)
-                                }
-                            }
-                            .padding()
-                        }
-                        .onAppear {
-                            if !logger.logs.isEmpty {
-                                proxy.scrollTo(logger.logs.count - 1, anchor: .bottom)
-                            }
+            logsContent
+                .navigationTitle("Nhật ký Hệ thống (Logs)")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Đóng") {
+                            presentationMode.wrappedValue.dismiss()
                         }
                     }
                 }
-
-                Divider()
-
-                HStack {
-                    Button(action: {
-                        let fullLogs = logger.logs.joined(separator: "\n")
-                        ClipboardHelper.copy(fullLogs)
-                        copyNotice = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            copyNotice = false
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: copyNotice ? "checkmark" : "doc.on.doc")
-                            Text(copyNotice ? "Đã sao chép!" : "Sao chép tất cả")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(logger.logs.isEmpty)
-
-                    Spacer()
-
-                    Button(action: {
-                        logger.clearLogs()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash")
-                            Text("Xóa log")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(logger.logs.isEmpty)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-                .background(Color.secondary.opacity(0.06))
-            }
-            .navigationTitle("Nhật ký Hệ thống (Logs)")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Đóng") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                }
-            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
-        #if os(macOS)
+        #else
+        VStack(spacing: 0) {
+            HStack {
+                Text("Nhật ký Hệ thống (Logs)")
+                    .font(.headline)
+                Spacer()
+                Button("Đóng") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+            }
+            .padding()
+
+            Divider()
+
+            logsContent
+        }
         .frame(minWidth: 550, idealWidth: 600, minHeight: 450, idealHeight: 550)
         #endif
+    }
+
+    private var logsContent: some View {
+        VStack(spacing: 0) {
+            if logger.logs.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 40))
+                        .foregroundColor(.secondary)
+                    Text("Chưa có bản ghi nhật ký nào.")
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 6) {
+                            ForEach(Array(logger.logs.enumerated()), id: \.offset) { index, log in
+                                Text(log)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(logColor(for: log))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .id(index)
+                            }
+                        }
+                        .padding()
+                    }
+                    .onAppear {
+                        if !logger.logs.isEmpty {
+                            proxy.scrollTo(logger.logs.count - 1, anchor: .bottom)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            HStack {
+                Button(action: {
+                    let fullLogs = logger.logs.joined(separator: "\n")
+                    ClipboardHelper.copy(fullLogs)
+                    copyNotice = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        copyNotice = false
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: copyNotice ? "checkmark" : "doc.on.doc")
+                        Text(copyNotice ? "Đã sao chép!" : "Sao chép tất cả")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(logger.logs.isEmpty)
+
+                Spacer()
+
+                Button(action: {
+                    logger.clearLogs()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash")
+                        Text("Xóa log")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(logger.logs.isEmpty)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .background(Color.secondary.opacity(0.06))
+        }
     }
 
     private func logColor(for text: String) -> Color {
@@ -856,3 +945,4 @@ struct LogsView: View {
         }
     }
 }
+
