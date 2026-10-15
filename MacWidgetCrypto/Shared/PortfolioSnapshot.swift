@@ -8,10 +8,26 @@ struct PortfolioSnapshot {
 }
 
 enum PortfolioSnapshotBuilder {
-    static func makeSnapshot(from coins: [Coin], portfolio: PortfolioManager, maxCoins: Int = 4) -> PortfolioSnapshot {
-        let heldCoins = coins.filter { portfolio.getAmount(for: $0.id) > 0 }
+    static func makeSnapshot(from coins: [Coin], portfolio: PortfolioManager, maxCoins: Int = 4, fallbackToTopCoins: Bool = false) -> PortfolioSnapshot {
+        portfolio.reloadHoldings()
+        let heldCoins = coins
+            .filter { portfolio.getAmount(for: $0.id) > 0 }
+            .sorted { (coin1, coin2) -> Bool in
+                let val1 = coin1.currentPrice * portfolio.getAmount(for: coin1.id)
+                let val2 = coin2.currentPrice * portfolio.getAmount(for: coin2.id)
+                return val1 > val2
+            }
         let showsRealHoldings = !heldCoins.isEmpty
-        let relevantCoins = showsRealHoldings ? heldCoins : coins
+
+        let relevantCoins: [Coin]
+        if showsRealHoldings {
+            relevantCoins = heldCoins
+        } else if fallbackToTopCoins {
+            relevantCoins = coins
+        } else {
+            relevantCoins = []
+        }
+
         let displayCoins = Array(relevantCoins.prefix(maxCoins))
         let totalHistory = buildTotalHistory(from: relevantCoins, portfolio: portfolio, showsRealHoldings: showsRealHoldings)
 
@@ -20,10 +36,12 @@ enum PortfolioSnapshotBuilder {
             portfolioValue = heldCoins.reduce(0) { partialResult, coin in
                 partialResult + (coin.currentPrice * portfolio.getAmount(for: coin.id))
             }
-        } else {
+        } else if fallbackToTopCoins {
             portfolioValue = displayCoins.reduce(0) { partialResult, coin in
                 partialResult + coin.currentPrice
             }
+        } else {
+            portfolioValue = 0.0
         }
 
         return PortfolioSnapshot(
@@ -33,6 +51,7 @@ enum PortfolioSnapshotBuilder {
             showsRealHoldings: showsRealHoldings
         )
     }
+
 
     private static func buildTotalHistory(from coins: [Coin], portfolio: PortfolioManager, showsRealHoldings: Bool) -> [Double] {
         let counts = coins.compactMap { $0.sparklineIn7D?.price.count }.filter { $0 > 1 }

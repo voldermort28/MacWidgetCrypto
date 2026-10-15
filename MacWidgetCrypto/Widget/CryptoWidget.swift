@@ -13,7 +13,20 @@ struct Provider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> Void) {
-        completion(placeholder(in: context))
+        if context.isPreview {
+            completion(placeholder(in: context))
+            return
+        }
+
+        Task {
+            do {
+                let coins = try await CryptoService.shared.fetchCoins()
+                let entry = makeEntry(from: coins, family: context.family)
+                completion(entry)
+            } catch {
+                completion(placeholder(in: context))
+            }
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SimpleEntry>) -> Void) {
@@ -34,8 +47,18 @@ struct Provider: TimelineProvider {
 
     private func makeEntry(from coins: [Coin], family: WidgetFamily = .systemMedium) -> SimpleEntry {
         let portfolio = PortfolioManager.shared
-        let maxCoins = family == .systemLarge ? 6 : 4
-        let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolio, maxCoins: maxCoins)
+        let maxCoins: Int
+        switch family {
+        case .systemSmall:
+            maxCoins = 2
+        case .systemMedium:
+            maxCoins = 2
+        case .systemLarge:
+            maxCoins = 4
+        @unknown default:
+            maxCoins = 4
+        }
+        let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolio, maxCoins: maxCoins, fallbackToTopCoins: false)
 
         return SimpleEntry(
             date: Date(),
@@ -78,10 +101,10 @@ struct CryptoWidgetEntryView: View {
                 mediumWidget
             }
         }
-        .padding()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .widgetContainerBackground(backgroundGradient)
     }
-
 
     private var backgroundGradient: some View {
         LinearGradient(
@@ -95,72 +118,80 @@ struct CryptoWidgetEntryView: View {
     }
 
     private var smallWidget: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 4) {
             headerView
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.showsRealHoldings ? "Portfolio Value" : "Market Snapshot")
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entry.showsRealHoldings ? "Tổng danh mục" : "MacCrypto")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                 Text(entry.portfolioValue.formattedCurrency())
-                    .font(.title3.weight(.bold))
+                    .font(.subheadline.weight(.bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
 
-            SparklineView(
-                data: entry.totalHistory,
-                lineColor: accentColor,
-                fillColor: accentColor
-            )
-            .frame(height: 56)
-
-            if entry.coins.isEmpty {
-                emptyState
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(entry.coins.prefix(2)) { coin in
-                        compactCoinRow(for: coin)
-                    }
-                }
-            }
-        }
-    }
-
-    private var mediumWidget: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                headerView
-
-                if entry.coins.isEmpty {
-                    emptyState
-                } else {
-                    ForEach(entry.coins.prefix(4)) { coin in
-                        detailedCoinRow(for: coin)
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text(entry.showsRealHoldings ? "Total Portfolio" : "Top Coins Basket")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text(entry.portfolioValue.formattedCurrency())
-                    .font(.title2.weight(.bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-
+            if !entry.totalHistory.isEmpty {
                 SparklineView(
                     data: entry.totalHistory,
                     lineColor: accentColor,
                     fillColor: accentColor
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(height: 36)
+            }
 
-                Text(entry.showsRealHoldings ? "Synced from app holdings" : "Add holdings in the app to personalize")
+            if entry.coins.isEmpty || !entry.showsRealHoldings {
+                emptyState
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(entry.coins.prefix(2)) { coin in
+                        compactCoinRow(for: coin)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var mediumWidget: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                headerView
+
+                if entry.coins.isEmpty || !entry.showsRealHoldings {
+                    emptyState
+                } else {
+                    ForEach(entry.coins.prefix(2)) { coin in
+                        detailedCoinRow(for: coin)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(entry.showsRealHoldings ? "Tổng giá trị" : "MacCrypto")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text(entry.portfolioValue.formattedCurrency())
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                if !entry.totalHistory.isEmpty {
+                    SparklineView(
+                        data: entry.totalHistory,
+                        lineColor: accentColor,
+                        fillColor: accentColor
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+
+                Text(entry.showsRealHoldings ? "Đồng bộ từ app" : "Mở app để thêm coin")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -169,37 +200,41 @@ struct CryptoWidgetEntryView: View {
     }
 
     private var largeWidget: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Crypto Portfolio")
                         .font(.headline)
                         .foregroundColor(.white)
-                    Text(entry.showsRealHoldings ? "Total Portfolio Tracking" : "Top Market Overview")
+                    Text(entry.showsRealHoldings ? "Theo dõi tài sản" : "Tổng quan danh mục")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
-                Spacer()
+                Spacer(minLength: 4)
                 Text(entry.portfolioValue.formattedCurrency())
-                    .font(.title2.weight(.bold))
+                    .font(.title3.weight(.bold))
                     .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
 
-            SparklineView(
-                data: entry.totalHistory,
-                lineColor: accentColor,
-                fillColor: accentColor
-            )
-            .frame(height: 80)
+            if !entry.totalHistory.isEmpty {
+                SparklineView(
+                    data: entry.totalHistory,
+                    lineColor: accentColor,
+                    fillColor: accentColor
+                )
+                .frame(height: 50)
+            }
 
             Divider()
                 .background(Color.white.opacity(0.15))
 
-            if entry.coins.isEmpty {
+            if entry.coins.isEmpty || !entry.showsRealHoldings {
                 emptyState
             } else {
-                VStack(spacing: 8) {
-                    ForEach(entry.coins.prefix(6)) { coin in
+                VStack(spacing: 6) {
+                    ForEach(entry.coins.prefix(4)) { coin in
                         detailedCoinRow(for: coin)
                     }
                 }
@@ -209,14 +244,13 @@ struct CryptoWidgetEntryView: View {
         }
     }
 
-
     private var headerView: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Crypto Widget")
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(.white)
-                Text(entry.showsRealHoldings ? "Your tracked assets" : "Live market overview")
+                Text(entry.showsRealHoldings ? "Tài sản của bạn" : "MacCrypto")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -225,19 +259,25 @@ struct CryptoWidgetEntryView: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("No data available")
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.white)
-            Text("Open the app and refresh prices to populate the widget.")
-                .font(.caption)
+        VStack(alignment: .center, spacing: 4) {
+            Image(systemName: "chart.pie")
+                .font(.system(size: 20))
                 .foregroundColor(.secondary)
+            Text("Chưa có coin trong danh mục")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+            Text("Mở app để nhập số lượng coin")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 4)
     }
 
     private func compactCoinRow(for coin: Coin) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             coinBadge(for: coin)
 
             Text(coin.symbol.uppercased())
@@ -256,7 +296,7 @@ struct CryptoWidgetEntryView: View {
         HStack(spacing: 8) {
             coinBadge(for: coin)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(coin.symbol.uppercased())
                     .font(.caption.weight(.bold))
                     .foregroundColor(.white)
@@ -266,7 +306,7 @@ struct CryptoWidgetEntryView: View {
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 4)
 
             if let prices = coin.sparklineIn7D?.price {
                 SparklineView(
@@ -274,38 +314,54 @@ struct CryptoWidgetEntryView: View {
                     lineColor: coin.priceChangePercentage24H >= 0 ? .green : .red,
                     fillColor: coin.priceChangePercentage24H >= 0 ? .green : .red
                 )
-                .frame(width: 42, height: 22)
+                .frame(width: 40, height: 18)
             }
 
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 1) {
                 let amount = PortfolioManager.shared.getAmount(for: coin.id)
 
-                if entry.showsRealHoldings {
+                if amount > 0 {
                     Text("\(amount.formattedAmount()) \(coin.symbol.uppercased())")
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(.white)
                 }
 
-                Text(coin.formattedPrice)
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.85))
+                HStack(spacing: 4) {
+                    Text(coin.formattedPrice)
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.85))
 
-                Text(coin.formattedChange)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(coin.priceChangePercentage24H >= 0 ? .green : .red)
+                    Text(coin.formattedChange)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(coin.priceChangePercentage24H >= 0 ? .green : .red)
+                }
             }
         }
     }
 
     private func coinBadge(for coin: Coin) -> some View {
         Circle()
-            .fill(Color.orange.opacity(0.85))
+            .fill(badgeColor(for: coin.symbol))
             .frame(width: 22, height: 22)
             .overlay(
                 Text(String(coin.symbol.uppercased().prefix(1)))
                     .font(.caption2.weight(.bold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.white)
             )
+    }
+
+    private func badgeColor(for symbol: String) -> Color {
+        switch symbol.lowercased() {
+        case "btc": return Color.orange
+        case "eth": return Color.blue
+        case "sol": return Color.purple
+        case "usdt": return Color.green
+        case "bnb": return Color.yellow
+        case "xrp": return Color.teal
+        case "doge": return Color.orange.opacity(0.8)
+        case "ada": return Color.blue.opacity(0.8)
+        default: return Color.gray.opacity(0.7)
+        }
     }
 }
 
@@ -367,4 +423,3 @@ extension View {
         #endif
     }
 }
-

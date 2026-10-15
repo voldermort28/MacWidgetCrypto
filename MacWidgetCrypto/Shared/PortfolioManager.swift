@@ -19,7 +19,7 @@ class PortfolioManager: ObservableObject {
         } else {
             self.userDefaults = UserDefaults.standard
         }
-        loadHoldings()
+        reloadHoldings()
     }
     
     func updateHolding(coinId: String, amount: Double) {
@@ -36,6 +36,7 @@ class PortfolioManager: ObservableObject {
     }
     
     func getAmount(for coinId: String) -> Double {
+        reloadHoldings()
         return holdings[coinId] ?? 0.0
     }
     
@@ -43,11 +44,12 @@ class PortfolioManager: ObservableObject {
         userDefaults.set(holdings, forKey: "user_holdings")
     }
     
-    private func loadHoldings() {
+    func reloadHoldings() {
         if let saved = userDefaults.dictionary(forKey: "user_holdings") as? [String: Double] {
             self.holdings = saved
         }
     }
+
 
     private func reloadWidgetTimelines() {
         #if canImport(WidgetKit)
