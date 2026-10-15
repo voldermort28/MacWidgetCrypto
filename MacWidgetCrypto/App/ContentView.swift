@@ -230,14 +230,23 @@ struct ContentView: View {
                 showingAddCoinSheet = false
                 loadData()
             }
+            #if os(macOS)
+            .frame(minWidth: 500, idealWidth: 540, minHeight: 520, idealHeight: 600)
+            #endif
         }
         .sheet(isPresented: $showingSyncSheet) {
             SyncView {
                 loadData()
             }
+            #if os(macOS)
+            .frame(minWidth: 520, idealWidth: 560, minHeight: 540, idealHeight: 620)
+            #endif
         }
         .sheet(isPresented: $showingLogsSheet) {
             LogsView()
+            #if os(macOS)
+            .frame(minWidth: 550, idealWidth: 600, minHeight: 450, idealHeight: 550)
+            #endif
         }
         .onAppear {
             let cached = CryptoService.shared.getCachedCoins()
@@ -411,92 +420,123 @@ struct AddCoinView: View {
     @State private var searchQuery = ""
     @State private var searchResults: [CoinSearchResult] = []
     @State private var isSearching = false
+    @State private var hasSearched = false
     var onCoinAdded: () -> Void
 
     var body: some View {
         NavigationView {
-            List {
-                Section(header: Text("Tìm kiếm Coin")) {
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                        TextField("Nhập tên hoặc ký hiệu (vd: sui, pepe, avax...)", text: $searchQuery)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .onSubmit {
-                                performSearch()
-                            }
-                        if !searchQuery.isEmpty {
-                            Button(action: { searchQuery = ""; searchResults = [] }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(BorderlessButtonStyle())
-                        }
-                        Button("Tìm") {
+            VStack(spacing: 0) {
+                // Pinned Search Header
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    
+                    TextField("Tìm theo mã hoặc tên (vd: BTC, SOL, SUI, PEPE...)", text: $searchQuery)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .onSubmit {
                             performSearch()
                         }
-                        .disabled(searchQuery.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
+                    
+                    if !searchQuery.isEmpty {
+                        Button(action: {
+                            searchQuery = ""
+                            searchResults = []
+                            hasSearched = false
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
                     }
-                    .padding(.vertical, 4)
+                    
+                    Button("Tìm kiếm") {
+                        performSearch()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(searchQuery.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.secondary.opacity(0.06))
 
+                Divider()
+
+                List {
                     if isSearching {
                         HStack {
                             Spacer()
-                            ProgressView("Đang tìm kiếm...")
+                            ProgressView("Đang tìm kiếm từ Binance...")
+                                .padding(.vertical, 24)
                             Spacer()
                         }
                     } else if !searchResults.isEmpty {
-                        ForEach(searchResults) { result in
+                        Section(header: Text("Kết quả tìm kiếm (\(searchResults.count))")) {
+                            ForEach(searchResults) { result in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(result.name)
+                                            .font(.headline)
+                                        Text(result.symbol.uppercased())
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if portfolioManager.isTracking(id: result.id) {
+                                        Label("Đã thêm", systemImage: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                            .font(.subheadline.bold())
+                                    } else {
+                                        Button("Thêm") {
+                                            portfolioManager.addTrackedCoin(id: result.id)
+                                            onCoinAdded()
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    } else if hasSearched {
+                        Section {
+                            VStack(spacing: 8) {
+                                Image(systemName: "questionmark.folder")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.secondary)
+                                Text("Không tìm thấy cặp giao dịch nào phù hợp trên Binance với từ khóa \"\(searchQuery)\"")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 16)
+                        }
+                    }
+
+                    Section(header: Text("Coin phổ biến")) {
+                        ForEach(CryptoService.popularCoins, id: \.id) { popular in
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(result.name)
+                                    Text(popular.name)
                                         .font(.headline)
-                                    Text(result.symbol.uppercased())
+                                    Text(popular.symbol)
                                         .font(.subheadline)
                                         .foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                if portfolioManager.isTracking(id: result.id) {
+                                if portfolioManager.isTracking(id: popular.id) {
                                     Label("Đã thêm", systemImage: "checkmark.circle.fill")
                                         .foregroundColor(.green)
-                                        .font(.caption)
+                                        .font(.subheadline.bold())
                                 } else {
                                     Button("Thêm") {
-                                        portfolioManager.addTrackedCoin(id: result.id)
+                                        portfolioManager.addTrackedCoin(id: popular.id)
                                         onCoinAdded()
                                     }
                                     .buttonStyle(.borderedProminent)
                                 }
                             }
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 4)
                         }
-                    }
-                }
-
-                Section(header: Text("Coin phổ biến")) {
-                    ForEach(CryptoService.popularCoins, id: \.id) { popular in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(popular.name)
-                                    .font(.headline)
-                                Text(popular.symbol)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            if portfolioManager.isTracking(id: popular.id) {
-                                Label("Đã thêm", systemImage: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                    .font(.caption)
-                            } else {
-                                Button("Thêm") {
-                                    portfolioManager.addTrackedCoin(id: popular.id)
-                                    onCoinAdded()
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                        }
-                        .padding(.vertical, 2)
                     }
                 }
             }
@@ -509,23 +549,41 @@ struct AddCoinView: View {
                 }
             }
         }
+        .navigationViewStyle(StackNavigationViewStyle())
+        #if os(macOS)
+        .frame(minWidth: 480, idealWidth: 540, minHeight: 520, idealHeight: 600)
+        #endif
     }
 
     private func performSearch() {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !query.isEmpty else {
+            searchResults = []
+            hasSearched = false
+            return
+        }
         isSearching = true
+        hasSearched = true
+        AppLogger.info("Tìm kiếm coin với từ khóa: \(query)")
         Task {
             do {
                 let results = try await CryptoService.shared.searchCoins(query: query)
                 await MainActor.run {
                     self.searchResults = results
                     self.isSearching = false
+                    AppLogger.info("Binance trả về \(results.count) kết quả tìm kiếm cho \(query).")
                 }
             } catch {
                 await MainActor.run {
-                    self.searchResults = []
+                    // Fallback to local popular coins
+                    let localMatches = CryptoService.popularCoins.filter {
+                        $0.name.uppercased().contains(query) || $0.symbol.uppercased().contains(query) || $0.id.uppercased().contains(query)
+                    }.map {
+                        CoinSearchResult(id: $0.id, name: $0.name, symbol: $0.symbol, marketCapRank: nil, thumb: nil, large: nil)
+                    }
+                    self.searchResults = localMatches
                     self.isSearching = false
+                    AppLogger.info("Lỗi tìm kiếm online, khớp nội bộ: \(localMatches.count) coin.")
                 }
             }
         }
@@ -670,6 +728,10 @@ struct SyncView: View {
                 self.syncKeyInput = syncManager.syncKey
             }
         }
+        .navigationViewStyle(StackNavigationViewStyle())
+        #if os(macOS)
+        .frame(minWidth: 520, idealWidth: 560, minHeight: 540, idealHeight: 620)
+        #endif
     }
 
     @State private var showingLogs = false
@@ -778,8 +840,9 @@ struct LogsView: View {
                 }
             }
         }
+        .navigationViewStyle(StackNavigationViewStyle())
         #if os(macOS)
-        .frame(minWidth: 550, minHeight: 420)
+        .frame(minWidth: 550, idealWidth: 600, minHeight: 450, idealHeight: 550)
         #endif
     }
 
