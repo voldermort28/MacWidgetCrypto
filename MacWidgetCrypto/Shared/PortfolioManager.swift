@@ -39,6 +39,18 @@ class PortfolioManager: ObservableObject {
         loadTrackedCoins()
     }
     
+    private var sharedContainerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId)
+    }
+
+    private var sharedHoldingsFileURL: URL? {
+        sharedContainerURL?.appendingPathComponent("holdings.json")
+    }
+
+    private var sharedTrackedCoinsFileURL: URL? {
+        sharedContainerURL?.appendingPathComponent("tracked_coins.json")
+    }
+
     func updateHolding(coinId: String, amount: Double) {
         let sanitizedAmount = max(amount, 0)
 
@@ -57,26 +69,86 @@ class PortfolioManager: ObservableObject {
     }
     
     func getAmount(for coinId: String) -> Double {
+        if let current = holdings[coinId], current > 0 {
+            return current
+        }
+        // If not found in memory, do a quick reload from disk/container
+        reloadHoldings()
         return holdings[coinId] ?? 0.0
     }
     
     private func saveHoldings() {
         userDefaults.set(holdings, forKey: "user_holdings")
+        userDefaults.synchronize()
         UserDefaults.standard.set(holdings, forKey: "user_holdings")
+        UserDefaults.standard.synchronize()
+
+        // Direct atomic write to shared container file
+        if let fileURL = sharedHoldingsFileURL {
+            if let data = try? JSONSerialization.data(withJSONObject: holdings, options: [.prettyPrinted]) {
+                try? data.write(to: fileURL, options: .atomic)
+            }
+        }
     }
     
     func reloadHoldings() {
-        let saved = (userDefaults.dictionary(forKey: "user_holdings") as? [String: Double]) ?? [:]
+        var saved: [String: Double] = [:]
+
+        // 1. Direct shared file (bypasses all memory cache between App and Widget)
+        if let fileURL = sharedHoldingsFileURL,
+           FileManager.default.fileExists(atPath: fileURL.path),
+           let data = try? Data(contentsOf: fileURL),
+           let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Double],
+           !json.isEmpty {
+            saved = json
+        }
+
+        // 2. App Group UserDefaults
+        if saved.isEmpty {
+            userDefaults.synchronize()
+            if let groupDict = userDefaults.dictionary(forKey: "user_holdings") as? [String: Double], !groupDict.isEmpty {
+                saved = groupDict
+            }
+        }
+
+        // 3. Fallback to standard UserDefaults
+        if saved.isEmpty {
+            UserDefaults.standard.synchronize()
+            if let stdDict = UserDefaults.standard.dictionary(forKey: "user_holdings") as? [String: Double], !stdDict.isEmpty {
+                saved = stdDict
+            }
+        }
+
         if self.holdings != saved {
             self.holdings = saved
-            AppLogger.info("Reloaded holdings: \(saved.keys.joined(separator: ", "))")
+            AppLogger.info("Reloaded holdings (\(saved.count) coins): \(saved.keys.joined(separator: ", "))")
         }
         loadTrackedCoins()
     }
 
     func loadTrackedCoins() {
-        let saved = userDefaults.stringArray(forKey: trackedCoinsKey) ?? defaultTrackedCoins
-        var current = saved.isEmpty ? defaultTrackedCoins : saved
+        var current: [String] = []
+
+        // Try direct file
+        if let fileURL = sharedTrackedCoinsFileURL,
+           FileManager.default.fileExists(atPath: fileURL.path),
+           let data = try? Data(contentsOf: fileURL),
+           let json = (try? JSONSerialization.jsonObject(with: data)) as? [String],
+           !json.isEmpty {
+            current = json
+        }
+
+        // Try UserDefaults
+        if current.isEmpty {
+            userDefaults.synchronize()
+            current = userDefaults.stringArray(forKey: trackedCoinsKey) ?? []
+        }
+        if current.isEmpty {
+            current = UserDefaults.standard.stringArray(forKey: trackedCoinsKey) ?? defaultTrackedCoins
+        }
+        if current.isEmpty {
+            current = defaultTrackedCoins
+        }
 
         for (id, amount) in holdings where amount > 0 {
             if !current.contains(id) {
@@ -87,13 +159,22 @@ class PortfolioManager: ObservableObject {
         if self.trackedCoinIds != current {
             self.trackedCoinIds = current
             userDefaults.set(current, forKey: trackedCoinsKey)
+            userDefaults.synchronize()
             AppLogger.info("Loaded tracked coins: \(current.joined(separator: ", "))")
         }
     }
 
     private func saveTrackedCoins() {
         userDefaults.set(trackedCoinIds, forKey: trackedCoinsKey)
+        userDefaults.synchronize()
         UserDefaults.standard.set(trackedCoinIds, forKey: trackedCoinsKey)
+        UserDefaults.standard.synchronize()
+
+        if let fileURL = sharedTrackedCoinsFileURL {
+            if let data = try? JSONSerialization.data(withJSONObject: trackedCoinIds, options: [.prettyPrinted]) {
+                try? data.write(to: fileURL, options: .atomic)
+            }
+        }
     }
 
     func addTrackedCoin(id: String) {

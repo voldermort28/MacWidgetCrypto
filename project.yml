@@ -35,6 +35,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.voldermort28.MacWidgetCrypto
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: MacWidgetCrypto/App/MacWidgetCrypto.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   CryptoWidget:
     type: app-extension

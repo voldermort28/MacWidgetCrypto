@@ -19,6 +19,7 @@ struct Provider: TimelineProvider {
         }
 
         Task {
+            PortfolioManager.shared.reloadHoldings()
             do {
                 let trackedIds = PortfolioManager.shared.trackedCoinIds
                 let coins = try await CryptoService.shared.fetchCoins(for: trackedIds)
@@ -37,6 +38,7 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SimpleEntry>) -> Void) {
         Task {
+            PortfolioManager.shared.reloadHoldings()
             let entry: SimpleEntry
 
             do {
@@ -62,6 +64,7 @@ struct Provider: TimelineProvider {
 
     private func makeEntry(from coins: [Coin], family: WidgetFamily = .systemMedium) -> SimpleEntry {
         let portfolio = PortfolioManager.shared
+        portfolio.reloadHoldings()
         let maxCoins: Int
         switch family {
         case .systemSmall:
