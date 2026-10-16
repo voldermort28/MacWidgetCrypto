@@ -125,14 +125,7 @@ struct CryptoWidgetEntryView: View {
     }
 
     private var backgroundGradient: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.10, green: 0.12, blue: 0.18),
-                Color(red: 0.03, green: 0.04, blue: 0.07)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        Color(red: 0.10, green: 0.10, blue: 0.12)
     }
 
     private var smallWidget: some View {
@@ -218,47 +211,19 @@ struct CryptoWidgetEntryView: View {
     }
 
     private var largeWidget: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Crypto Portfolio")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    Text(entry.showsRealHoldings ? "Theo dõi tài sản" : "Tổng quan danh mục")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                Spacer(minLength: 4)
-                Text(entry.portfolioValue.formattedCurrency())
-                    .font(.title3.weight(.bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-
-            if !entry.totalHistory.isEmpty {
-                SparklineView(
-                    data: entry.totalHistory,
-                    lineColor: accentColor,
-                    fillColor: accentColor
-                )
-                .frame(height: 42)
-            }
-
-            Divider()
-                .background(Color.white.opacity(0.15))
-
+        VStack(spacing: 0) {
             if entry.coins.isEmpty || !entry.showsRealHoldings {
                 emptyState
             } else {
-                VStack(spacing: 5) {
-                    ForEach(entry.coins.prefix(6)) { coin in
-                        detailedCoinRow(for: coin)
+                ForEach(Array(entry.coins.prefix(6).enumerated()), id: \.element.id) { index, coin in
+                    if index > 0 {
+                        Divider()
+                            .background(Color.white.opacity(0.12))
                     }
+                    detailedCoinRow(for: coin)
+                        .frame(maxHeight: .infinity)
                 }
             }
-
-            Spacer(minLength: 0)
         }
     }
 
@@ -278,8 +243,8 @@ struct CryptoWidgetEntryView: View {
 
     private var emptyState: some View {
         VStack(alignment: .center, spacing: 4) {
-            Image(systemName: "chart.pie")
-                .font(.system(size: 20))
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 24))
                 .foregroundColor(.secondary)
             Text("Chưa có coin trong danh mục")
                 .font(.caption.weight(.semibold))
@@ -295,91 +260,106 @@ struct CryptoWidgetEntryView: View {
     }
 
     private func compactCoinRow(for coin: Coin) -> some View {
-        HStack(spacing: 6) {
-            coinBadge(for: coin)
+        let isPositive = coin.priceChangePercentage24H >= 0
+        let stockRed = Color(red: 1.0, green: 0.27, blue: 0.23)
+        let stockGreen = Color(red: 0.19, green: 0.82, blue: 0.35)
+        let accent = isPositive ? stockGreen : stockRed
+
+        return HStack(spacing: 4) {
+            Image(systemName: isPositive ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+                .font(.system(size: 7, weight: .bold))
+                .foregroundColor(accent)
 
             Text(coin.symbol.uppercased())
-                .font(.caption.weight(.semibold))
+                .font(.caption.weight(.bold))
                 .foregroundColor(.white)
 
             Spacer(minLength: 0)
 
-            Text(coin.formattedChange)
-                .font(.caption2.weight(.semibold))
-                .foregroundColor(coin.priceChangePercentage24H >= 0 ? .green : .red)
+            if let prices = coin.sparklineIn7D?.price, prices.count > 1 {
+                SparklineView(
+                    data: prices,
+                    baselinePrice: prices.first,
+                    lineColor: accent,
+                    fillColor: accent,
+                    showBaseline: true
+                )
+                .frame(width: 42, height: 16)
+            }
+
+            Text(coin.formattedPrice)
+                .font(.caption2.weight(.bold))
+                .foregroundColor(.white)
         }
     }
 
     private func detailedCoinRow(for coin: Coin) -> some View {
-        HStack(spacing: 8) {
-            coinBadge(for: coin)
+        let isPositive = coin.priceChangePercentage24H >= 0
+        let stockRed = Color(red: 1.0, green: 0.27, blue: 0.23)   // Apple Stock Red #FF453A
+        let stockGreen = Color(red: 0.19, green: 0.82, blue: 0.35) // Apple Stock Green #30D158
+        let accent = isPositive ? stockGreen : stockRed
+        let amount = PortfolioManager.shared.getAmount(for: coin.id)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(coin.symbol.uppercased())
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(.white)
-                Text(coin.name)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
+        return HStack(alignment: .center, spacing: 6) {
+            // 1. Left Column: Direction arrow + Symbol-USD, Full Name + Holding amount
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Image(systemName: isPositive ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(accent)
 
-            Spacer(minLength: 4)
-
-            if let prices = coin.sparklineIn7D?.price {
-                SparklineView(
-                    data: prices,
-                    lineColor: coin.priceChangePercentage24H >= 0 ? .green : .red,
-                    fillColor: coin.priceChangePercentage24H >= 0 ? .green : .red
-                )
-                .frame(width: 40, height: 18)
-            }
-
-            VStack(alignment: .trailing, spacing: 1) {
-                let amount = PortfolioManager.shared.getAmount(for: coin.id)
-
-                if amount > 0 {
-                    Text("\(amount.formattedAmount()) \(coin.symbol.uppercased())")
-                        .font(.caption2.weight(.semibold))
+                    Text("\(coin.symbol.uppercased())-USD")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
+                        .lineLimit(1)
                 }
 
                 HStack(spacing: 4) {
-                    Text(coin.formattedPrice)
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.85))
+                    Text(coin.name)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
 
-                    Text(coin.formattedChange)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(coin.priceChangePercentage24H >= 0 ? .green : .red)
+                    if amount > 0 {
+                        Text("• \(amount.formattedAmount())")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.75))
+                            .lineLimit(1)
+                    }
                 }
             }
-        }
-    }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-    private func coinBadge(for coin: Coin) -> some View {
-        Circle()
-            .fill(badgeColor(for: coin.symbol))
-            .frame(width: 22, height: 22)
-            .overlay(
-                Text(String(coin.symbol.uppercased().prefix(1)))
-                    .font(.caption2.weight(.bold))
+            // 2. Middle Column: Apple Stocks Sparkline with Dashed Baseline
+            if let prices = coin.sparklineIn7D?.price, prices.count > 1 {
+                SparklineView(
+                    data: prices,
+                    baselinePrice: prices.first,
+                    lineColor: accent,
+                    fillColor: accent,
+                    showBaseline: true
+                )
+                .frame(width: 68, height: 26)
+            } else {
+                Spacer().frame(width: 68)
+            }
+
+            // 3. Right Column: Bold Price on top, Change on bottom
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(coin.formattedPrice)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
-            )
-    }
+                    .lineLimit(1)
 
-    private func badgeColor(for symbol: String) -> Color {
-        switch symbol.lowercased() {
-        case "btc": return Color.orange
-        case "eth": return Color.blue
-        case "sol": return Color.purple
-        case "usdt": return Color.green
-        case "bnb": return Color.yellow
-        case "xrp": return Color.teal
-        case "doge": return Color.orange.opacity(0.8)
-        case "ada": return Color.blue.opacity(0.8)
-        default: return Color.gray.opacity(0.7)
+                Text(coin.formattedChange)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(accent)
+                    .lineLimit(1)
+            }
+            .frame(minWidth: 65, alignment: .trailing)
         }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 3)
     }
 }
 

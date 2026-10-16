@@ -194,6 +194,24 @@ class CryptoService {
                     }
                 }
             }
+
+            // Fetch 24h hourly klines in parallel for detailed Apple Stocks style chart
+            var klinesMap: [String: [Double]] = [:]
+            await withTaskGroup(of: (String, [Double])?.self) { group in
+                for sym in symbolsToQuery {
+                    group.addTask {
+                        if let klines = await self.fetchKlines(symbol: sym) {
+                            return (sym, klines)
+                        }
+                        return nil
+                    }
+                }
+                for await res in group {
+                    if let (sym, klines) = res {
+                        klinesMap[sym] = klines
+                    }
+                }
+            }
         }
 
         var resultCoins: [Coin] = []
@@ -201,7 +219,7 @@ class CryptoService {
         for id in targetIds {
             let info = Self.getCoinInfo(for: id)
             if info.ticker == "USDT" {
-                let usdtSparkline = SparklineData(price: Array(repeating: 1.0, count: 6))
+                let usdtSparkline = SparklineData(price: Array(repeating: 1.0, count: 24))
                 resultCoins.append(Coin(
                     id: id,
                     symbol: "USDT",
@@ -212,6 +230,7 @@ class CryptoService {
                     sparklineIn7D: usdtSparkline
                 ))
             } else if let tickerData = binanceTickerData[info.ticker] {
+                let sparklinePrices = klinesMap[info.ticker] ?? tickerData.sparkline
                 resultCoins.append(Coin(
                     id: id,
                     symbol: info.symbol,
@@ -219,7 +238,7 @@ class CryptoService {
                     image: nil,
                     currentPrice: tickerData.price,
                     priceChangePercentage24H: tickerData.change,
-                    sparklineIn7D: SparklineData(price: tickerData.sparkline)
+                    sparklineIn7D: SparklineData(price: sparklinePrices)
                 ))
             }
         }
@@ -231,6 +250,31 @@ class CryptoService {
             AppLogger.error("Không lấy được dữ liệu coin nào từ Binance.")
         }
         return resultCoins
+    }
+
+    private func fetchKlines(symbol: String) async -> [Double]? {
+        for host in apiHosts.prefix(2) {
+            guard let url = URL(string: "\(host)/api/v3/klines?symbol=\(symbol)&interval=1h&limit=24") else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 3
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { continue }
+                if let rawArray = try? JSONSerialization.jsonObject(with: data) as? [[Any]] {
+                    let closes = rawArray.compactMap { candle -> Double? in
+                        guard candle.count > 4, let closeStr = candle[4] as? String else { return nil }
+                        return Double(closeStr)
+                    }
+                    if closes.count >= 6 {
+                        return closes
+                    }
+                }
+            } catch {
+                continue
+            }
+        }
+        return nil
     }
 
     private func fetchSingleTicker(symbol: String) async -> (String, Double, Double, [Double])? {
