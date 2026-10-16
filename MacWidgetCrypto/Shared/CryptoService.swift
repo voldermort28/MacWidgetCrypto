@@ -9,6 +9,33 @@ struct CoinSearchResult: Identifiable, Codable, Hashable {
     let large: String?
 }
 
+struct KlinePoint: Identifiable, Codable {
+    var id: Double { time.timeIntervalSince1970 }
+    let time: Date
+    let open: Double
+    let high: Double
+    let low: Double
+    let close: Double
+    let volume: Double
+}
+
+struct Binance24hStats: Codable {
+    let symbol: String
+    let priceChange: Double
+    let priceChangePercent: Double
+    let weightedAvgPrice: Double
+    let prevClosePrice: Double
+    let lastPrice: Double
+    let openPrice: Double
+    let highPrice: Double
+    let lowPrice: Double
+    let volume: Double
+    let quoteVolume: Double
+    let count: Int
+    var high52Week: Double?
+    var low52Week: Double?
+}
+
 private struct BinanceTickerResponse: Codable {
     let symbol: String
     let lastPrice: String
@@ -36,6 +63,9 @@ class CryptoService {
     private var userDefaults: UserDefaults {
         UserDefaults(suiteName: appGroupId) ?? UserDefaults.standard
     }
+    
+    private var detailedKlinesCache: [String: (timestamp: Date, klines: [KlinePoint])] = [:]
+    private var stats24hCache: [String: (timestamp: Date, stats: Binance24hStats)] = [:]
     
     static let popularCoins: [(id: String, name: String, symbol: String)] = [
         ("bitcoin", "Bitcoin", "BTC"),
@@ -364,5 +394,154 @@ class CryptoService {
             }
         }
         return []
+    }
+
+    // MARK: - Detailed Klines for Interactive Apple Stocks Chart
+    func fetchDetailedKlines(symbol: String, interval: String = "1h", limit: Int = 24) async -> [KlinePoint] {
+        let pair = symbol.uppercased().hasSuffix("USDT") ? symbol.uppercased() : symbol.uppercased() + "USDT"
+        let key = "\(pair)_\(interval)_\(limit)"
+        
+        if let cached = detailedKlinesCache[key], Date().timeIntervalSince(cached.timestamp) < 30 {
+            return cached.klines
+        }
+
+        for host in apiHosts.prefix(3) {
+            guard let url = URL(string: "\(host)/api/v3/klines?symbol=\(pair)&interval=\(interval)&limit=\(limit)") else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 4
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { continue }
+                if let rawArray = try? JSONSerialization.jsonObject(with: data) as? [[Any]] {
+                    let klines: [KlinePoint] = rawArray.compactMap { candle in
+                        guard candle.count > 5,
+                              let openTimeMs = candle[0] as? Double,
+                              let openStr = candle[1] as? String, let open = Double(openStr),
+                              let highStr = candle[2] as? String, let high = Double(highStr),
+                              let lowStr = candle[3] as? String, let low = Double(lowStr),
+                              let closeStr = candle[4] as? String, let close = Double(closeStr),
+                              let volStr = candle[5] as? String, let vol = Double(volStr) else {
+                            return nil
+                        }
+                        return KlinePoint(
+                            time: Date(timeIntervalSince1970: openTimeMs / 1000.0),
+                            open: open,
+                            high: high,
+                            low: low,
+                            close: close,
+                            volume: vol
+                        )
+                    }
+                    if !klines.isEmpty {
+                        detailedKlinesCache[key] = (Date(), klines)
+                        return klines
+                    }
+                }
+            } catch {
+                continue
+            }
+        }
+        return []
+    }
+
+    // MARK: - 24h Market Stats (Open, High, Low, Volume, 52W High/Low)
+    func fetch24hStats(symbol: String) async -> Binance24hStats? {
+        let pair = symbol.uppercased().hasSuffix("USDT") ? symbol.uppercased() : symbol.uppercased() + "USDT"
+        
+        if let cached = stats24hCache[pair], Date().timeIntervalSince(cached.timestamp) < 30 {
+            return cached.stats
+        }
+
+        for host in apiHosts.prefix(3) {
+            guard let url = URL(string: "\(host)/api/v3/ticker/24hr?symbol=\(pair)") else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 4
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { continue }
+
+                struct Raw24hr: Codable {
+                    let symbol: String
+                    let priceChange: String
+                    let priceChangePercent: String
+                    let weightedAvgPrice: String
+                    let prevClosePrice: String
+                    let lastPrice: String
+                    let openPrice: String
+                    let highPrice: String
+                    let lowPrice: String
+                    let volume: String
+                    let quoteVolume: String
+                    let count: Int
+                }
+
+                if let raw = try? JSONDecoder().decode(Raw24hr.self, from: data) {
+                    var stats = Binance24hStats(
+                        symbol: raw.symbol,
+                        priceChange: Double(raw.priceChange) ?? 0.0,
+                        priceChangePercent: Double(raw.priceChangePercent) ?? 0.0,
+                        weightedAvgPrice: Double(raw.weightedAvgPrice) ?? 0.0,
+                        prevClosePrice: Double(raw.prevClosePrice) ?? 0.0,
+                        lastPrice: Double(raw.lastPrice) ?? 0.0,
+                        openPrice: Double(raw.openPrice) ?? 0.0,
+                        highPrice: Double(raw.highPrice) ?? 0.0,
+                        lowPrice: Double(raw.lowPrice) ?? 0.0,
+                        volume: Double(raw.volume) ?? 0.0,
+                        quoteVolume: Double(raw.quoteVolume) ?? 0.0,
+                        count: raw.count,
+                        high52Week: nil,
+                        low52Week: nil
+                    )
+
+                    // Fetch 52-Week High & Low from weekly candles
+                    if let weekly52 = await fetchWeekly52Klines(symbol: pair) {
+                        stats.high52Week = weekly52.high
+                        stats.low52Week = weekly52.low
+                    }
+
+                    stats24hCache[pair] = (Date(), stats)
+                    return stats
+                }
+            } catch {
+                continue
+            }
+        }
+        return nil
+    }
+
+    private func fetchWeekly52Klines(symbol: String) async -> (high: Double, low: Double)? {
+        for host in apiHosts.prefix(2) {
+            guard let url = URL(string: "\(host)/api/v3/klines?symbol=\(symbol)&interval=1w&limit=52") else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 4
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { continue }
+                if let rawArray = try? JSONSerialization.jsonObject(with: data) as? [[Any]] {
+                    var maxHigh: Double = 0
+                    var minLow: Double = Double.greatestFiniteMagnitude
+                    for candle in rawArray {
+                        if candle.count > 3,
+                           let hStr = candle[2] as? String, let h = Double(hStr),
+                           let lStr = candle[3] as? String, let l = Double(lStr) {
+                            if h > maxHigh { maxHigh = h }
+                            if l < minLow { minLow = l }
+                        }
+                    }
+                    if maxHigh > 0 && minLow < Double.greatestFiniteMagnitude {
+                        return (maxHigh, minLow)
+                    }
+                }
+            } catch {
+                continue
+            }
+        }
+        return nil
     }
 }

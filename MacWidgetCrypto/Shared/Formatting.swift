@@ -1,11 +1,25 @@
 import Foundation
 
 extension Double {
-    func formattedCurrency() -> String {
+    func formattedCurrency(maxDecimals: Int = 2) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = maxDecimals
+        formatter.minimumFractionDigits = min(2, maxDecimals)
         return formatter.string(from: NSNumber(value: self)) ?? "$0.00"
+    }
+
+    func formattedVolume() -> String {
+        if self >= 1_000_000_000 {
+            return String(format: "%.2fB", self / 1_000_000_000)
+        } else if self >= 1_000_000 {
+            return String(format: "%.2fM", self / 1_000_000)
+        } else if self >= 1_000 {
+            return String(format: "%.1fK", self / 1_000)
+        } else {
+            return String(format: "%.2f", self)
+        }
     }
 
     func formattedAmount(maximumFractionDigits: Int = 4) -> String {
