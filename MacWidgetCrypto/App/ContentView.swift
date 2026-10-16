@@ -894,7 +894,7 @@ struct PortfolioSummaryCardView: View {
 
                 HStack(alignment: .firstTextBaseline) {
                     Text(totalVal.formattedCurrency())
-                        .font(.system(size: 18, weight: .extrabold, design: .rounded))
+                        .font(.system(size: 18, weight: .heavy, design: .rounded))
                         .foregroundColor(.white)
                     Spacer()
                     Text("Xem biểu đồ ví ›")
