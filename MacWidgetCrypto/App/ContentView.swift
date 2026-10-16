@@ -394,10 +394,7 @@ struct CoinRowView: View {
                 .keyboardType(.decimalPad)
                 #endif
                 .onChange(of: amountString) { newStr in
-                    let sanitized = newStr.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)
-                    if sanitized.isEmpty {
-                        PortfolioManager.shared.updateHolding(coinId: coin.id, amount: 0)
-                    } else if let parsed = Double(sanitized), parsed >= 0 {
+                    if let parsed = parseCryptoAmount(newStr), parsed >= 0 {
                         PortfolioManager.shared.updateHolding(coinId: coin.id, amount: parsed)
                     }
                 }
