@@ -41,7 +41,13 @@ jobs:
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
-          build 2>&1 | tee build_mac.log || { echo "::error::Build macOS failed"; grep -E "error:|fatal error:" build_mac.log | head -n 30; exit 1; }
+          build 2>&1 | tee build_mac.log || {
+            echo "::error::Build macOS failed! See below for compiler errors:"
+            grep -C 2 -E "error:|fatal error:" build_mac.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit 1
+          }
 
         echo "Applying ad-hoc code signing with entitlements for macOS..."
         APP_DIR="build/Build/Products/Release/MacWidgetCrypto.app"
