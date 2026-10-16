@@ -608,7 +608,7 @@ struct ContentView: View {
                             .foregroundColor(.white)
                         if totalVal > 0 {
                             Text("≈ \(totalVal.formattedCurrency())")
-                                .font(.subheadline.semibold())
+                                .font(.subheadline.weight(.semibold))
                                 .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
                         }
                     }
@@ -748,7 +748,7 @@ struct ContentView: View {
                             }
                             Spacer()
                             Text("\(amount.formattedAmount()) \(coin.symbol.uppercased())")
-                                .font(.caption.semibold())
+                                .font(.caption.weight(.semibold))
                                 .foregroundColor(.secondary)
                             Spacer()
                             VStack(alignment: .trailing, spacing: 2) {

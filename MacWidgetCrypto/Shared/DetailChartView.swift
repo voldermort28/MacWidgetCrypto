@@ -109,19 +109,21 @@ struct DetailChartView: View {
             ForEach(0...levels, id: \.self) { i in
                 let y = chartH * CGFloat(i) / CGFloat(levels)
                 let price = maxVal - (range / Double(levels)) * Double(i)
-                
-                // Horizontal line
-                Path { path in
-                    path.move(to: CGPoint(x: 0, y: y))
-                    path.addLine(to: CGPoint(x: chartW, y: y))
-                }
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
 
-                // Right price label
-                Text(formatPrice(price))
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.60))
-                    .position(x: chartW + 35, y: y)
+                ZStack {
+                    // Horizontal line
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: chartW, y: y))
+                    }
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+
+                    // Right price label
+                    Text(formatPrice(price))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.60))
+                        .position(x: chartW + 35, y: y)
+                }
             }
         }
     }
@@ -136,18 +138,20 @@ struct DetailChartView: View {
                     let klineIndex = Int(round(fraction * CGFloat(klines.count - 1)))
                     let point = klines[min(max(klineIndex, 0), klines.count - 1)]
 
-                    // Vertical grid line
-                    Path { path in
-                        path.move(to: CGPoint(x: x, y: 0))
-                        path.addLine(to: CGPoint(x: x, y: chartH))
-                    }
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    ZStack {
+                        // Vertical grid line
+                        Path { path in
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: chartH))
+                        }
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
 
-                    // Bottom time label
-                    Text(formatDate(point.time))
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.65))
-                        .position(x: x, y: h - 10)
+                        // Bottom time label
+                        Text(formatDate(point.time))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.65))
+                            .position(x: x, y: h - 10)
+                    }
                 }
             }
         }

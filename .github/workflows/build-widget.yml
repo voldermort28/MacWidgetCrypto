@@ -32,6 +32,7 @@ jobs:
         fi
 
         echo "Building macOS project: $PROJECT_FILE"
+        set -o pipefail
         xcodebuild -project "$PROJECT_FILE" \
           -scheme "MacWidgetCrypto" \
           -configuration Release \
@@ -40,7 +41,7 @@ jobs:
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
-          build
+          build 2>&1 | tee build_mac.log || { echo "::error::Build macOS failed"; grep -E "error:|fatal error:" build_mac.log | head -n 30; exit 1; }
 
         echo "Applying ad-hoc code signing with entitlements for macOS..."
         APP_DIR="build/Build/Products/Release/MacWidgetCrypto.app"
@@ -59,6 +60,7 @@ jobs:
         fi
 
         echo "Building iOS Device project: $PROJECT_FILE"
+        set -o pipefail
         xcodebuild -project "$PROJECT_FILE" \
           -scheme "MacWidgetCrypto" \
           -configuration Release \
@@ -67,7 +69,7 @@ jobs:
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
-          build
+          build 2>&1 | tee build_ios.log || { echo "::error::Build iOS failed"; grep -E "error:|fatal error:" build_ios.log | head -n 30; exit 1; }
 
         echo "Packaging iOS IPA for TrollStore..."
         mkdir -p build_ios/Payload
