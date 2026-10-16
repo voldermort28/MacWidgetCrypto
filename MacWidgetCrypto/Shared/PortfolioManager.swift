@@ -51,17 +51,66 @@ class PortfolioManager: ObservableObject {
         sharedContainerURL?.appendingPathComponent("tracked_coins.json")
     }
 
+    static func canonicalId(for id: String) -> String {
+        let lower = id.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        switch lower {
+        case "bitcoin", "btc":
+            return "bitcoin"
+        case "ethereum", "eth":
+            return "ethereum"
+        case "solana", "sol":
+            return "solana"
+        case "tether", "usdt":
+            return "tether"
+        case "binancecoin", "bnb":
+            return "binancecoin"
+        case "ripple", "xrp":
+            return "ripple"
+        case "cardano", "ada":
+            return "cardano"
+        case "dogecoin", "doge":
+            return "dogecoin"
+        case "avalanche-2", "avax":
+            return "avalanche-2"
+        case "polkadot", "dot":
+            return "polkadot"
+        case "chainlink", "link":
+            return "chainlink"
+        case "near", "near protocol":
+            return "near"
+        case "toncoin", "ton":
+            return "toncoin"
+        case "sui":
+            return "sui"
+        case "pepe":
+            return "pepe"
+        case "shiba-inu", "shib":
+            return "shiba-inu"
+        default:
+            return lower
+        }
+    }
+
     func updateHolding(coinId: String, amount: Double) {
         let sanitizedAmount = max(amount, 0)
+        let canon = Self.canonicalId(for: coinId)
+        let lower = coinId.lowercased()
 
         if sanitizedAmount == 0 {
             holdings.removeValue(forKey: coinId)
+            holdings.removeValue(forKey: canon)
+            holdings.removeValue(forKey: lower)
         } else {
             holdings[coinId] = sanitizedAmount
-            if !trackedCoinIds.contains(coinId) {
-                trackedCoinIds.append(coinId)
-                saveTrackedCoins()
+            holdings[canon] = sanitizedAmount
+            holdings[lower] = sanitizedAmount
+
+            for idToAdd in [coinId, canon, lower] {
+                if !trackedCoinIds.contains(idToAdd) {
+                    trackedCoinIds.append(idToAdd)
+                }
             }
+            saveTrackedCoins()
         }
 
         saveHoldings()
@@ -69,12 +118,47 @@ class PortfolioManager: ObservableObject {
     }
     
     func getAmount(for coinId: String) -> Double {
-        if let current = holdings[coinId], current > 0 {
+        let clean = coinId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canon = Self.canonicalId(for: clean)
+        let lower = clean.lowercased()
+
+        // 1. In-memory exact or canonical match
+        if let current = holdings[clean], current > 0 {
             return current
         }
-        // If not found in memory, do a quick reload from disk/container
+        if let current = holdings[canon], current > 0 {
+            return current
+        }
+        if let current = holdings[lower], current > 0 {
+            return current
+        }
+
+        // 2. Search all existing keys in memory for matching canonical id
+        for (key, amount) in holdings where amount > 0 {
+            if Self.canonicalId(for: key) == canon {
+                return amount
+            }
+        }
+
+        // 3. Quick reload from disk/container and retry
         reloadHoldings()
-        return holdings[coinId] ?? 0.0
+
+        if let current = holdings[clean], current > 0 {
+            return current
+        }
+        if let current = holdings[canon], current > 0 {
+            return current
+        }
+        if let current = holdings[lower], current > 0 {
+            return current
+        }
+        for (key, amount) in holdings where amount > 0 {
+            if Self.canonicalId(for: key) == canon {
+                return amount
+            }
+        }
+
+        return 0.0
     }
     
     private func saveHoldings() {
@@ -122,9 +206,16 @@ class PortfolioManager: ObservableObject {
             }
         }
 
-        if self.holdings != saved {
-            self.holdings = saved
-            AppLogger.info("Reloaded holdings (\(saved.count) coins): \(saved.keys.joined(separator: ", "))")
+        var normalized: [String: Double] = [:]
+        for (k, v) in saved {
+            normalized[k] = v
+            normalized[Self.canonicalId(for: k)] = v
+            normalized[k.lowercased()] = v
+        }
+
+        if self.holdings != normalized {
+            self.holdings = normalized
+            AppLogger.info("Reloaded holdings (\(normalized.count) entries): \(normalized.keys.joined(separator: ", "))")
         }
         loadTrackedCoins()
     }
@@ -242,6 +333,7 @@ class PortfolioManager: ObservableObject {
     private func reloadWidgetTimelines() {
         #if canImport(WidgetKit)
         WidgetCenter.shared.reloadAllTimelines()
+        WidgetCenter.shared.reloadTimelines(ofKind: "CryptoWidget")
         #endif
     }
     

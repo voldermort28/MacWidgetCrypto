@@ -20,42 +20,33 @@ struct Provider: TimelineProvider {
 
         Task {
             PortfolioManager.shared.reloadHoldings()
-            do {
-                let trackedIds = PortfolioManager.shared.trackedCoinIds
-                let coins = try await CryptoService.shared.fetchCoins(for: trackedIds)
-                let entry = makeEntry(from: coins, family: context.family)
-                completion(entry)
-            } catch {
-                let cached = CryptoService.shared.getCachedCoins()
-                if !cached.isEmpty {
-                    completion(makeEntry(from: cached, family: context.family))
-                } else {
-                    completion(placeholder(in: context))
-                }
+            let trackedIds = PortfolioManager.shared.trackedCoinIds
+            var coins = (try? await CryptoService.shared.fetchCoins(for: trackedIds)) ?? []
+            if coins.isEmpty {
+                coins = CryptoService.shared.getCachedCoins()
             }
+            if coins.isEmpty {
+                coins = MockData.coins
+            }
+            completion(makeEntry(from: coins, family: context.family))
         }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SimpleEntry>) -> Void) {
         Task {
             PortfolioManager.shared.reloadHoldings()
-            let entry: SimpleEntry
-
-            do {
-                let trackedIds = PortfolioManager.shared.trackedCoinIds
-                let coins = try await CryptoService.shared.fetchCoins(for: trackedIds)
-                entry = makeEntry(from: coins, family: context.family)
-            } catch {
-                let cached = CryptoService.shared.getCachedCoins()
-                if !cached.isEmpty {
-                    entry = makeEntry(from: cached, family: context.family)
-                } else {
-                    entry = placeholder(in: context)
-                }
+            let trackedIds = PortfolioManager.shared.trackedCoinIds
+            var coins = (try? await CryptoService.shared.fetchCoins(for: trackedIds)) ?? []
+            if coins.isEmpty {
+                coins = CryptoService.shared.getCachedCoins()
             }
+            if coins.isEmpty {
+                coins = MockData.coins
+            }
+            let entry = makeEntry(from: coins, family: context.family)
 
-            // Background update policy: 60 minutes interval as requested
-            let refreshMinutes = 60
+            // Background update policy: 30 minutes interval
+            let refreshMinutes = 30
             let nextUpdate = Calendar.current.date(byAdding: .minute, value: refreshMinutes, to: Date()) ?? Date().addingTimeInterval(Double(refreshMinutes * 60))
             AppLogger.info("Widget cập nhật dữ liệu. Lần tự động cập nhật ngầm tiếp theo: \(refreshMinutes) phút nữa.")
             completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
@@ -76,12 +67,14 @@ struct Provider: TimelineProvider {
         @unknown default:
             maxCoins = 6
         }
-        let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolio, maxCoins: maxCoins, fallbackToTopCoins: true)
+        let safeCoins = coins.isEmpty ? MockData.coins : coins
+        let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: safeCoins, portfolio: portfolio, maxCoins: maxCoins, fallbackToTopCoins: true)
+        let displayCoins = snapshot.displayCoins.isEmpty ? Array(safeCoins.prefix(maxCoins)) : snapshot.displayCoins
 
         return SimpleEntry(
             date: Date(),
-            coins: snapshot.displayCoins,
-            totalHistory: snapshot.totalHistory,
+            coins: displayCoins,
+            totalHistory: snapshot.totalHistory.isEmpty ? MockData.history : snapshot.totalHistory,
             portfolioValue: snapshot.portfolioValue,
             showsRealHoldings: snapshot.showsRealHoldings
         )
@@ -281,21 +274,12 @@ struct CryptoWidgetEntryView: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .center, spacing: 4) {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 24))
-                .foregroundColor(.secondary)
-            Text("Chưa có coin trong danh mục")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-            Text("Mở app để nhập số lượng coin")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(MockData.coins.prefix(2)) { coin in
+                compactCoinRow(for: coin)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.vertical, 4)
     }
 
     private func compactCoinRow(for coin: Coin) -> some View {

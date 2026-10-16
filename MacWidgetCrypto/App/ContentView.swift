@@ -278,10 +278,15 @@ struct ContentView: View {
             startForegroundTimer()
             #if canImport(WidgetKit)
             WidgetCenter.shared.reloadAllTimelines()
+            WidgetCenter.shared.reloadTimelines(ofKind: "CryptoWidget")
             #endif
         } else {
             AppLogger.info("App vào background / sleep. Giãn chu kỳ cập nhật lên 60 phút.")
             startBackgroundTimer()
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            WidgetCenter.shared.reloadTimelines(ofKind: "CryptoWidget")
+            #endif
         }
     }
 

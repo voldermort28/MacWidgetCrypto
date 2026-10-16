@@ -52,16 +52,25 @@ class CryptoService {
     private let appGroupId = "group.com.voldermort28.MacWidgetCrypto"
     private let cacheKey = "cached_coins_data"
     
-    // Official Binance endpoints (Binance Vision public data cluster is unblocked in Vietnam)
+    // Official Binance endpoints
     private let apiHosts = [
-        "https://data-api.binance.vision",
+        "https://api.binance.com",
         "https://api1.binance.com",
+        "https://api2.binance.com",
         "https://api3.binance.com",
-        "https://api.binance.com"
+        "https://data-api.binance.vision"
     ]
     
     private var userDefaults: UserDefaults {
         UserDefaults(suiteName: appGroupId) ?? UserDefaults.standard
+    }
+
+    private var sharedContainerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId)
+    }
+
+    private var sharedCacheFileURL: URL? {
+        sharedContainerURL?.appendingPathComponent("cached_coins.json")
     }
     
     private var detailedKlinesCache: [String: (timestamp: Date, klines: [KlinePoint])] = [:]
@@ -133,15 +142,46 @@ class CryptoService {
         guard !coins.isEmpty else { return }
         if let data = try? JSONEncoder().encode(coins) {
             userDefaults.set(data, forKey: cacheKey)
+            userDefaults.synchronize()
+            UserDefaults.standard.set(data, forKey: cacheKey)
+            UserDefaults.standard.synchronize()
+
+            if let fileURL = sharedCacheFileURL {
+                if let dir = sharedContainerURL {
+                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                }
+                try? data.write(to: fileURL, options: .atomic)
+            }
         }
     }
     
     func getCachedCoins() -> [Coin] {
-        guard let data = userDefaults.data(forKey: cacheKey),
-              let coins = try? JSONDecoder().decode([Coin].self, from: data) else {
-            return []
+        // 1. Direct shared container file
+        if let fileURL = sharedCacheFileURL,
+           FileManager.default.fileExists(atPath: fileURL.path),
+           let data = try? Data(contentsOf: fileURL),
+           let coins = try? JSONDecoder().decode([Coin].self, from: data),
+           !coins.isEmpty {
+            return coins
         }
-        return coins
+
+        // 2. App Group defaults
+        userDefaults.synchronize()
+        if let data = userDefaults.data(forKey: cacheKey),
+           let coins = try? JSONDecoder().decode([Coin].self, from: data),
+           !coins.isEmpty {
+            return coins
+        }
+
+        // 3. Standard defaults
+        UserDefaults.standard.synchronize()
+        if let data = UserDefaults.standard.data(forKey: cacheKey),
+           let coins = try? JSONDecoder().decode([Coin].self, from: data),
+           !coins.isEmpty {
+            return coins
+        }
+
+        return []
     }
 
     // MARK: - Binance Fetching
