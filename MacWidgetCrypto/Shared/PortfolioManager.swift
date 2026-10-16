@@ -85,6 +85,9 @@ class PortfolioManager: ObservableObject {
 
         // Direct atomic write to shared container file
         if let fileURL = sharedHoldingsFileURL {
+            if let dir = sharedContainerURL {
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            }
             if let data = try? JSONSerialization.data(withJSONObject: holdings, options: [.prettyPrinted]) {
                 try? data.write(to: fileURL, options: .atomic)
             }
@@ -171,6 +174,9 @@ class PortfolioManager: ObservableObject {
         UserDefaults.standard.synchronize()
 
         if let fileURL = sharedTrackedCoinsFileURL {
+            if let dir = sharedContainerURL {
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            }
             if let data = try? JSONSerialization.data(withJSONObject: trackedCoinIds, options: [.prettyPrinted]) {
                 try? data.write(to: fileURL, options: .atomic)
             }

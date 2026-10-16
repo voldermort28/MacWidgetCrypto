@@ -35,6 +35,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.voldermort28.MacWidgetCrypto
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: MacWidgetCrypto/App/MacWidgetCrypto.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]": MacWidgetCrypto/App/MacWidgetCrypto_iOS.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": MacWidgetCrypto/App/MacWidgetCrypto_iOS.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   CryptoWidget:
@@ -65,4 +67,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.voldermort28.MacWidgetCrypto.CryptoWidget
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: MacWidgetCrypto/Widget/CryptoWidget.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]": MacWidgetCrypto/Widget/CryptoWidget_iOS.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": MacWidgetCrypto/Widget/CryptoWidget_iOS.entitlements
 

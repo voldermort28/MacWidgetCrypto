@@ -76,7 +76,7 @@ struct Provider: TimelineProvider {
         @unknown default:
             maxCoins = 6
         }
-        let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolio, maxCoins: maxCoins, fallbackToTopCoins: false)
+        let snapshot = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolio, maxCoins: maxCoins, fallbackToTopCoins: true)
 
         return SimpleEntry(
             date: Date(),
@@ -136,7 +136,7 @@ struct CryptoWidgetEntryView: View {
                 Text(entry.showsRealHoldings ? "Tổng danh mục" : "MacCrypto")
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                Text(entry.portfolioValue.formattedCurrency())
+                Text(entry.showsRealHoldings ? entry.portfolioValue.formattedCurrency() : "\(entry.coins.count) Coin theo dõi")
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
@@ -152,7 +152,7 @@ struct CryptoWidgetEntryView: View {
                 .frame(height: 36)
             }
 
-            if entry.coins.isEmpty || !entry.showsRealHoldings {
+            if entry.coins.isEmpty {
                 emptyState
             } else {
                 VStack(alignment: .leading, spacing: 4) {
@@ -171,7 +171,7 @@ struct CryptoWidgetEntryView: View {
             VStack(alignment: .leading, spacing: 6) {
                 headerView
 
-                if entry.coins.isEmpty || !entry.showsRealHoldings {
+                if entry.coins.isEmpty {
                     emptyState
                 } else {
                     ForEach(entry.coins.prefix(3)) { coin in
@@ -187,7 +187,7 @@ struct CryptoWidgetEntryView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Text(entry.portfolioValue.formattedCurrency())
+                Text(entry.showsRealHoldings ? entry.portfolioValue.formattedCurrency() : "\(entry.coins.count) Coin theo dõi")
                     .font(.title3.weight(.bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
@@ -202,7 +202,7 @@ struct CryptoWidgetEntryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
-                Text(entry.showsRealHoldings ? "Đồng bộ từ app" : "Mở app để thêm coin")
+                Text(entry.showsRealHoldings ? "Đồng bộ từ app" : "Binance Realtime")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -222,7 +222,7 @@ struct CryptoWidgetEntryView: View {
                         .foregroundColor(.secondary)
                 }
                 Spacer(minLength: 4)
-                Text(entry.portfolioValue.formattedCurrency())
+                Text(entry.showsRealHoldings ? entry.portfolioValue.formattedCurrency() : "\(entry.coins.count) Coin theo dõi")
                     .font(.title3.weight(.bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
@@ -233,7 +233,7 @@ struct CryptoWidgetEntryView: View {
             Divider()
                 .background(Color.white.opacity(0.12))
 
-            if entry.coins.isEmpty || !entry.showsRealHoldings {
+            if entry.coins.isEmpty {
                 emptyState
             } else {
                 let displayCoins = Array(entry.coins.prefix(6))
