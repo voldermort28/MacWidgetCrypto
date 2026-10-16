@@ -139,6 +139,7 @@ class CryptoService {
         }
 
         var binanceTickerData: [String: (price: Double, change: Double, sparkline: [Double])] = [:]
+        var klinesMap: [String: [Double]] = [:]
 
         if !symbolsToQuery.isEmpty {
             var batchSuccess = false
@@ -196,7 +197,6 @@ class CryptoService {
             }
 
             // Fetch 24h hourly klines in parallel for detailed Apple Stocks style chart
-            var klinesMap: [String: [Double]] = [:]
             await withTaskGroup(of: (String, [Double])?.self) { group in
                 for sym in symbolsToQuery {
                     group.addTask {

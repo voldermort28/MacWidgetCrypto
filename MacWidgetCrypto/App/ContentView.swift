@@ -876,7 +876,8 @@ struct LogsView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 6) {
-                            ForEach(Array(logger.logs.enumerated()), id: \.offset) { index, log in
+                            ForEach(0..<logger.logs.count, id: \.self) { index in
+                                let log = logger.logs[index]
                                 Text(log)
                                     .font(.system(size: 11, design: .monospaced))
                                     .foregroundColor(logColor(for: log))

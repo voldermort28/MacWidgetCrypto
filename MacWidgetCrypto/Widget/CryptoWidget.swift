@@ -215,12 +215,13 @@ struct CryptoWidgetEntryView: View {
             if entry.coins.isEmpty || !entry.showsRealHoldings {
                 emptyState
             } else {
-                ForEach(Array(entry.coins.prefix(6).enumerated()), id: \.element.id) { index, coin in
+                let displayCoins = Array(entry.coins.prefix(6))
+                ForEach(0..<displayCoins.count, id: \.self) { index in
                     if index > 0 {
                         Divider()
                             .background(Color.white.opacity(0.12))
                     }
-                    detailedCoinRow(for: coin)
+                    detailedCoinRow(for: displayCoins[index])
                         .frame(maxHeight: .infinity)
                 }
             }
