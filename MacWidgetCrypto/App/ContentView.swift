@@ -117,47 +117,15 @@ struct ContentView: View {
         }
         .alert("Số lượng coin nắm giữ", isPresented: $showingEditHoldingAlert) {
             TextField("Nhập số lượng (vd: 1.5)", text: $editAmountInput)
-            Button("Lưu") {
-                let coinId: String
-                if let c = coinToEdit {
-                    coinId = c.id
-                } else if case .coin(let id) = selectedTarget {
-                    coinId = id
-                } else {
-                    return
-                }
-                if let parsed = parseCryptoAmount(editAmountInput), parsed >= 0 {
-                    portfolioManager.updateHolding(coinId: coinId, amount: parsed)
-                    loadData(isBackgroundRefresh: true)
-                }
-            }
+            Button("Lưu", action: saveHoldingAmount)
             Button("Hủy", role: .cancel) { }
         } message: {
             Text("Nhập số lượng coin bạn đang sở hữu trong ví:")
         }
-        .onAppear {
-            let cached = CryptoService.shared.getCachedCoins()
-            if !cached.isEmpty {
-                self.coins = cached
-            }
-            loadData()
-            startForegroundTimer()
-        }
-        .onDisappear {
-            stopTimers()
-        }
+        .onAppear(perform: handleOnAppear)
+        .onDisappear(perform: stopTimers)
         .onChange(of: scenePhase) { newPhase in
-            if newPhase == .active {
-                AppLogger.info("App mở / Active. Cập nhật giá ngay lập tức và chạy timer 30s.")
-                loadData(isBackgroundRefresh: true)
-                startForegroundTimer()
-                #if canImport(WidgetKit)
-                WidgetCenter.shared.reloadAllTimelines()
-                #endif
-            } else {
-                AppLogger.info("App vào background / sleep. Giãn chu kỳ cập nhật lên 60 phút.")
-                startBackgroundTimer()
-            }
+            handleScenePhaseChange(newPhase)
         }
         #if os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: NSWorkspace.didWakeNotification)) { _ in
@@ -279,166 +247,86 @@ struct ContentView: View {
         .background(Color(red: 0.10, green: 0.10, blue: 0.12))
     }
 
+    private func saveHoldingAmount() {
+        let coinId: String
+        if let c = coinToEdit {
+            coinId = c.id
+        } else if case .coin(let id) = selectedTarget {
+            coinId = id
+        } else {
+            return
+        }
+        if let parsed = parseCryptoAmount(editAmountInput), parsed >= 0 {
+            portfolioManager.updateHolding(coinId: coinId, amount: parsed)
+            loadData(isBackgroundRefresh: true)
+        }
+    }
+
+    private func handleOnAppear() {
+        let cached = CryptoService.shared.getCachedCoins()
+        if !cached.isEmpty {
+            self.coins = cached
+        }
+        loadData()
+        startForegroundTimer()
+    }
+
+    private func handleScenePhaseChange(_ newPhase: ScenePhase) {
+        if newPhase == .active {
+            AppLogger.info("App mở / Active. Cập nhật giá ngay lập tức và chạy timer 30s.")
+            loadData(isBackgroundRefresh: true)
+            startForegroundTimer()
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+        } else {
+            AppLogger.info("App vào background / sleep. Giãn chu kỳ cập nhật lên 60 phút.")
+            startBackgroundTimer()
+        }
+    }
+
     private var portfolioHistory: [Double] {
         PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolioManager).totalHistory
     }
 
     // MARK: - Portfolio Summary Card in Sidebar
     private var portfolioSummaryCard: some View {
-        let isSelected = (selectedTarget == .portfolio)
-        let totalVal = portfolioManager.calculateTotalValue(coins: coins)
-        let heldCount = coins.filter { portfolioManager.getAmount(for: $0.id) > 0 }.count
-        let history = portfolioHistory
-
-        return Button(action: {
-            selectedTarget = .portfolio
-            loadDetailData()
-        }) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    HStack(spacing: 4) {
-                        Image(systemName: "wallet.pass.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.blue)
-                        Text("TỔNG GIÁ TRỊ VÍ")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Text("\(heldCount) tài sản")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color(red: 0.19, green: 0.82, blue: 0.35).opacity(0.18))
-                        .cornerRadius(4)
-                }
-
-                HStack(alignment: .firstTextBaseline) {
-                    Text(totalVal.formattedCurrency())
-                        .font(.system(size: 18, weight: .extrabold, design: .rounded))
-                        .foregroundColor(.white)
-                    Spacer()
-                    Text("Xem biểu đồ ví ›")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.blue)
-                }
-
-                if history.count > 1 {
-                    SparklineView(
-                        data: history,
-                        baselinePrice: history.first,
-                        lineColor: Color(red: 0.19, green: 0.82, blue: 0.35),
-                        fillColor: Color(red: 0.19, green: 0.82, blue: 0.35),
-                        showBaseline: true
-                    )
-                    .frame(height: 28)
-                }
+        PortfolioSummaryCardView(
+            isSelected: selectedTarget == .portfolio,
+            totalVal: portfolioManager.calculateTotalValue(coins: coins),
+            heldCount: coins.filter { portfolioManager.getAmount(for: $0.id) > 0 }.count,
+            history: portfolioHistory,
+            onSelect: {
+                selectedTarget = .portfolio
+                loadDetailData()
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? Color.blue.opacity(0.20) : Color.white.opacity(0.06))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.blue : Color.white.opacity(0.10), lineWidth: 1)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
+        )
     }
 
-    // MARK: - Sidebar Coin Row with Sharp Zigzag Sparkline
+    // MARK: - Sidebar Coin Row
     private func sidebarCoinRow(for coin: Coin) -> some View {
-        let isSelected = (selectedTarget == .coin(coin.id))
-        let isUp = coin.priceChangePercentage24H >= 0
-        let stockRed = Color(red: 1.0, green: 0.27, blue: 0.23)
-        let stockGreen = Color(red: 0.19, green: 0.82, blue: 0.35)
-        let accent = isUp ? stockGreen : stockRed
         let amount = portfolioManager.getAmount(for: coin.id)
-
-        return Button(action: {
-            selectedTarget = .coin(coin.id)
-            loadDetailData()
-        }) {
-            HStack(spacing: 6) {
-                // Left: Symbol & Name
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(coin.symbol.uppercased())-USD")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    HStack(spacing: 4) {
-                        Text(coin.name)
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                        if amount > 0 {
-                            Text("• \(amount.formattedAmount())")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.75))
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Middle: Sharp 24h zigzag sparkline with dashed baseline
-                if let prices = coin.sparklineIn7D?.price, prices.count > 1 {
-                    SparklineView(
-                        data: prices,
-                        baselinePrice: prices.first,
-                        lineColor: accent,
-                        fillColor: accent,
-                        showBaseline: true
-                    )
-                    .frame(width: 58, height: 24)
-                } else {
-                    Spacer().frame(width: 58)
-                }
-
-                // Right: Price & Capsule Badge
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(coin.formattedPrice)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-
-                    Button(action: {
-                        showPercentage.toggle()
-                    }) {
-                        Text(showPercentage ? coin.formattedChange : String(format: "%@%.2f", isUp ? "+" : "", (coin.currentPrice * coin.priceChangePercentage24H / 100.0)))
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(accent)
-                            .cornerRadius(4)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-                .frame(minWidth: 62, alignment: .trailing)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(
-                isSelected ? Color.white.opacity(0.12) : Color.clear
-            )
-            .cornerRadius(8)
-        }
-        .buttonStyle(PlainButtonStyle())
-        .contextMenu {
-            Button("Sửa số lượng nắm giữ") {
+        return SidebarCoinRowView(
+            coin: coin,
+            isSelected: selectedTarget == .coin(coin.id),
+            showPercentage: showPercentage,
+            amount: amount,
+            onSelect: {
+                selectedTarget = .coin(coin.id)
+                loadDetailData()
+            },
+            onTogglePercentage: {
+                showPercentage.toggle()
+            },
+            onEditAmount: {
                 coinToEdit = coin
                 editAmountInput = amount > 0 ? (amount.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", amount) : String(amount)) : ""
                 showingEditHoldingAlert = true
-            }
-            Divider()
-            Button(role: .destructive) {
+            },
+            onDelete: {
                 deleteCoin(coin)
-            } label: {
-                Label("Xóa khỏi danh mục", systemImage: "trash")
             }
-        }
+        )
     }
 
     // MARK: - Right Detail View
@@ -970,6 +858,162 @@ struct ContentView: View {
         if case .coin(let id) = selectedTarget, id == coin.id {
             selectedTarget = .portfolio
             loadDetailData()
+        }
+    }
+}
+
+// MARK: - Standalone Portfolio Summary Card Component
+struct PortfolioSummaryCardView: View {
+    let isSelected: Bool
+    let totalVal: Double
+    let heldCount: Int
+    let history: [Double]
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    HStack(spacing: 4) {
+                        Image(systemName: "wallet.pass.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.blue)
+                        Text("TỔNG GIÁ TRỊ VÍ")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Text("\(heldCount) tài sản")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color(red: 0.19, green: 0.82, blue: 0.35).opacity(0.18))
+                        .cornerRadius(4)
+                }
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text(totalVal.formattedCurrency())
+                        .font(.system(size: 18, weight: .extrabold, design: .rounded))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Text("Xem biểu đồ ví ›")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.blue)
+                }
+
+                if history.count > 1 {
+                    SparklineView(
+                        data: history,
+                        baselinePrice: history.first,
+                        lineColor: Color(red: 0.19, green: 0.82, blue: 0.35),
+                        fillColor: Color(red: 0.19, green: 0.82, blue: 0.35),
+                        showBaseline: true
+                    )
+                    .frame(height: 28)
+                }
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? Color.blue.opacity(0.20) : Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.blue : Color.white.opacity(0.10), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Standalone Sidebar Coin Row Component
+struct SidebarCoinRowView: View {
+    let coin: Coin
+    let isSelected: Bool
+    let showPercentage: Bool
+    let amount: Double
+    let onSelect: () -> Void
+    let onTogglePercentage: () -> Void
+    let onEditAmount: () -> Void
+    let onDelete: () -> Void
+
+    private var isUp: Bool { coin.priceChangePercentage24H >= 0 }
+    private var stockRed: Color { Color(red: 1.0, green: 0.27, blue: 0.23) }
+    private var stockGreen: Color { Color(red: 0.19, green: 0.82, blue: 0.35) }
+    private var accent: Color { isUp ? stockGreen : stockRed }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 6) {
+                // Left: Symbol & Name
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(coin.symbol.uppercased())-USD")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(coin.name)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                        if amount > 0 {
+                            Text("• \(amount.formattedAmount())")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.75))
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Middle: Sharp 24h zigzag sparkline with dashed baseline
+                if let prices = coin.sparklineIn7D?.price, prices.count > 1 {
+                    SparklineView(
+                        data: prices,
+                        baselinePrice: prices.first,
+                        lineColor: accent,
+                        fillColor: accent,
+                        showBaseline: true
+                    )
+                    .frame(width: 58, height: 24)
+                } else {
+                    Spacer().frame(width: 58)
+                }
+
+                // Right: Price & Capsule Badge
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(coin.formattedPrice)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    Button(action: onTogglePercentage) {
+                        Text(showPercentage ? coin.formattedChange : String(format: "%@%.2f", isUp ? "+" : "", (coin.currentPrice * coin.priceChangePercentage24H / 100.0)))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(accent)
+                            .cornerRadius(4)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .frame(minWidth: 62, alignment: .trailing)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                isSelected ? Color.white.opacity(0.12) : Color.clear
+            )
+            .cornerRadius(8)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .contextMenu {
+            Button("Sửa số lượng nắm giữ", action: onEditAmount)
+            Divider()
+            Button(role: .destructive, action: onDelete) {
+                Label("Xóa khỏi danh mục", systemImage: "trash")
+            }
         }
     }
 }
