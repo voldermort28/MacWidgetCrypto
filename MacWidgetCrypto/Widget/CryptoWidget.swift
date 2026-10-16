@@ -212,6 +212,27 @@ struct CryptoWidgetEntryView: View {
 
     private var largeWidget: some View {
         VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Crypto Portfolio")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text(entry.showsRealHoldings ? "Theo dõi tài sản" : "Tổng quan danh mục")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                Spacer(minLength: 4)
+                Text(entry.portfolioValue.formattedCurrency())
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.bottom, 6)
+
+            Divider()
+                .background(Color.white.opacity(0.12))
+
             if entry.coins.isEmpty || !entry.showsRealHoldings {
                 emptyState
             } else {
