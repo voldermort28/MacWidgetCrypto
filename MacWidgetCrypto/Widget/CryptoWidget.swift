@@ -146,8 +146,10 @@ struct CryptoWidgetEntryView: View {
             if !entry.totalHistory.isEmpty {
                 SparklineView(
                     data: entry.totalHistory,
+                    baselinePrice: entry.totalHistory.first,
                     lineColor: accentColor,
-                    fillColor: accentColor
+                    fillColor: accentColor,
+                    showBaseline: true
                 )
                 .frame(height: 36)
             }
@@ -196,8 +198,10 @@ struct CryptoWidgetEntryView: View {
                 if !entry.totalHistory.isEmpty {
                     SparklineView(
                         data: entry.totalHistory,
+                        baselinePrice: entry.totalHistory.first,
                         lineColor: accentColor,
-                        fillColor: accentColor
+                        fillColor: accentColor,
+                        showBaseline: true
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -228,7 +232,20 @@ struct CryptoWidgetEntryView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            .padding(.bottom, 6)
+            .padding(.bottom, 4)
+
+            // Biểu đồ tổng giá trị ví (Total Portfolio Chart with Dashed Baseline)
+            if !entry.totalHistory.isEmpty {
+                SparklineView(
+                    data: entry.totalHistory,
+                    baselinePrice: entry.totalHistory.first,
+                    lineColor: accentColor,
+                    fillColor: accentColor,
+                    showBaseline: true
+                )
+                .frame(height: 38)
+                .padding(.bottom, 4)
+            }
 
             Divider()
                 .background(Color.white.opacity(0.12))
@@ -236,7 +253,7 @@ struct CryptoWidgetEntryView: View {
             if entry.coins.isEmpty {
                 emptyState
             } else {
-                let displayCoins = Array(entry.coins.prefix(6))
+                let displayCoins = Array(entry.coins.prefix(5))
                 ForEach(0..<displayCoins.count, id: \.self) { index in
                     if index > 0 {
                         Divider()

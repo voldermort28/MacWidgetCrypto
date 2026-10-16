@@ -120,8 +120,10 @@ struct ContentView: View {
                             if snapshot.totalHistory.count > 1 {
                                 SparklineView(
                                     data: snapshot.totalHistory,
+                                    baselinePrice: snapshot.totalHistory.first,
                                     lineColor: chartAccentColor,
-                                    fillColor: chartAccentColor
+                                    fillColor: chartAccentColor,
+                                    showBaseline: true
                                 )
                                 .frame(height: 120)
                             } else {
@@ -376,8 +378,24 @@ struct CoinRowView: View {
                     .foregroundColor(.secondary)
             }
             
-            Spacer(minLength: 8)
-            
+            Spacer(minLength: 4)
+
+            if let prices = coin.sparklineIn7D?.price, prices.count > 1 {
+                let isPositive = coin.priceChangePercentage24H >= 0
+                let stockRed = Color(red: 1.0, green: 0.27, blue: 0.23)
+                let stockGreen = Color(red: 0.19, green: 0.82, blue: 0.35)
+                let accent = isPositive ? stockGreen : stockRed
+
+                SparklineView(
+                    data: prices,
+                    baselinePrice: prices.first,
+                    lineColor: accent,
+                    fillColor: accent,
+                    showBaseline: true
+                )
+                .frame(width: 58, height: 24)
+            }
+
             VStack(alignment: .trailing, spacing: 2) {
                 Text(coin.formattedPrice)
                     .font(.body.weight(.semibold))

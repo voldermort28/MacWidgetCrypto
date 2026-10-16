@@ -61,7 +61,7 @@ struct SparklineView: View {
         guard data.count > 1 else { return data }
         if data.count >= 20 { return data }
 
-        // Interpolate to 24 smooth points if data has few points
+        // Linear interpolation preserves sharp peaks and market volatility (gấp khúc chi tiết)
         var result: [Double] = []
         let targetCount = 24
         for i in 0..<targetCount {
@@ -69,11 +69,7 @@ struct SparklineView: View {
             let lowerIndex = Int(floor(t))
             let upperIndex = min(lowerIndex + 1, data.count - 1)
             let fraction = t - Double(lowerIndex)
-
-            // Smooth cosine interpolation
-            let ft = fraction * Double.pi
-            let f = (1.0 - cos(ft)) * 0.5
-            let interpolated = data[lowerIndex] * (1.0 - f) + data[upperIndex] * f
+            let interpolated = data[lowerIndex] * (1.0 - fraction) + data[upperIndex] * fraction
             result.append(interpolated)
         }
         return result
