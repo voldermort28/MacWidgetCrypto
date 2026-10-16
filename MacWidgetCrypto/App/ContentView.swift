@@ -279,11 +279,16 @@ struct ContentView: View {
         .background(Color(red: 0.10, green: 0.10, blue: 0.12))
     }
 
+    private var portfolioHistory: [Double] {
+        PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolioManager).totalHistory
+    }
+
     // MARK: - Portfolio Summary Card in Sidebar
     private var portfolioSummaryCard: some View {
         let isSelected = (selectedTarget == .portfolio)
         let totalVal = portfolioManager.calculateTotalValue(coins: coins)
         let heldCount = coins.filter { portfolioManager.getAmount(for: $0.id) > 0 }.count
+        let history = portfolioHistory
 
         return Button(action: {
             selectedTarget = .portfolio
@@ -319,8 +324,6 @@ struct ContentView: View {
                         .foregroundColor(.blue)
                 }
 
-                // Mini zigzag sparkline for portfolio
-                let history = PortfolioSnapshotBuilder.makeSnapshot(from: coins, portfolio: portfolioManager).totalHistory
                 if history.count > 1 {
                     SparklineView(
                         data: history,
@@ -733,41 +736,47 @@ struct ContentView: View {
                         .padding(.vertical, 8)
                 } else {
                     ForEach(heldCoins) { coin in
-                        let amount = portfolioManager.getAmount(for: coin.id)
-                        let val = amount * coin.currentPrice
-                        let share = totalVal > 0 ? (val / totalVal) * 100.0 : 0.0
-
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(coin.symbol.uppercased())-USD")
-                                    .font(.subheadline.bold())
-                                    .foregroundColor(.white)
-                                Text(coin.name)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Text("\(amount.formattedAmount()) \(coin.symbol.uppercased())")
-                                .font(.caption.weight(.semibold))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text(val.formattedCurrency())
-                                    .font(.subheadline.bold())
-                                    .foregroundColor(.white)
-                                Text(String(format: "%.1f%% danh mục", share))
-                                    .font(.caption2)
-                                    .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
-                            }
-                        }
-                        .padding(.vertical, 4)
-                        Divider().background(Color.white.opacity(0.06))
+                        allocationRow(coin: coin, totalVal: totalVal)
                     }
                 }
             }
             .padding(12)
             .background(Color.white.opacity(0.05))
             .cornerRadius(12)
+        }
+    }
+
+    private func allocationRow(coin: Coin, totalVal: Double) -> some View {
+        let amount = portfolioManager.getAmount(for: coin.id)
+        let val = amount * coin.currentPrice
+        let share = totalVal > 0 ? (val / totalVal) * 100.0 : 0.0
+
+        return VStack(spacing: 4) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(coin.symbol.uppercased())-USD")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.white)
+                    Text(coin.name)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Text("\(amount.formattedAmount()) \(coin.symbol.uppercased())")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(val.formattedCurrency())
+                        .font(.subheadline.bold())
+                        .foregroundColor(.white)
+                    Text(String(format: "%.1f%% danh mục", share))
+                        .font(.caption2)
+                        .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
+                }
+            }
+            .padding(.vertical, 4)
+            Divider().background(Color.white.opacity(0.06))
         }
     }
 
