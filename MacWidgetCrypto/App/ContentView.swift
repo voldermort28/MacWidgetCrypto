@@ -43,6 +43,7 @@ struct ContentView: View {
 
     // Apple Stocks State
     @State private var selectedTarget: NavigationTarget = .portfolio
+    @State private var navigateToDetail: Bool = false
     @State private var selectedTimeframe: String = "1D"
     @State private var searchQuery: String = ""
     @State private var showPercentage: Bool = true
@@ -87,18 +88,22 @@ struct ContentView: View {
                     .frame(minWidth: 520, idealWidth: 700)
             }
             #else
-            if #available(iOS 16.0, *) {
-                NavigationSplitView {
+            NavigationView {
+                ZStack {
                     sidebarView
-                } detail: {
-                    detailView
+
+                    NavigationLink(
+                        destination: detailView,
+                        isActive: $navigateToDetail
+                    ) {
+                        EmptyView()
+                    }
+                    .hidden()
                 }
-            } else {
-                NavigationView {
-                    sidebarView
-                    detailView
-                }
+                .navigationTitle("MacCrypto")
+                .navigationBarTitleDisplayMode(.inline)
             }
+            .navigationViewStyle(StackNavigationViewStyle())
             #endif
         }
         .sheet(isPresented: $showingAddCoinSheet) {
@@ -304,6 +309,9 @@ struct ContentView: View {
             onSelect: {
                 selectedTarget = .portfolio
                 loadDetailData()
+                #if os(iOS)
+                navigateToDetail = true
+                #endif
             }
         )
     }
@@ -319,6 +327,9 @@ struct ContentView: View {
             onSelect: {
                 selectedTarget = .coin(coin.id)
                 loadDetailData()
+                #if os(iOS)
+                navigateToDetail = true
+                #endif
             },
             onTogglePercentage: {
                 showPercentage.toggle()
@@ -338,6 +349,21 @@ struct ContentView: View {
     private var detailView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                #if os(iOS)
+                HStack {
+                    Button(action: { navigateToDetail = false }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("Danh sách")
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color.accentColor)
+                    }
+                    Spacer()
+                }
+                .padding(.bottom, 2)
+                #endif
+
                 if selectedTarget == .portfolio {
                     portfolioDetailSection
                 } else {
@@ -347,6 +373,10 @@ struct ContentView: View {
             .padding(20)
         }
         .background(Color(red: 0.11, green: 0.11, blue: 0.13))
+        #if os(iOS)
+        .navigationTitle(selectedTarget == .portfolio ? "Tổng danh mục" : "\(currentSelectedCoin?.symbol.uppercased() ?? "")-USD")
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     // MARK: - Coin Detail Section
