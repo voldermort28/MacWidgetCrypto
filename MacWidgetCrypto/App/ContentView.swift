@@ -1129,6 +1129,25 @@ struct HoldingAmountModalView: View {
         return parsedValue * price
     }
 
+    private func sanitizeAmountInput(_ input: String) -> String {
+        // Auto convert comma to dot immediately
+        var cleaned = input.replacingOccurrences(of: ",", with: ".")
+        // Only allow digits and decimal dot
+        cleaned = cleaned.filter { "0123456789.".contains($0) }
+        
+        // If user typed dot first, e.g. ".", make it "0."
+        if cleaned == "." {
+            return "0."
+        }
+        
+        // Allow only a single dot
+        let components = cleaned.components(separatedBy: ".")
+        if components.count > 2 {
+            cleaned = components[0] + "." + components[1...].joined()
+        }
+        return cleaned
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -1187,6 +1206,12 @@ struct HoldingAmountModalView: View {
                         #endif
                         .focused($isFieldFocused)
                         .textFieldStyle(PlainTextFieldStyle())
+                        .onChange(of: amountText) { newValue in
+                            let sanitized = sanitizeAmountInput(newValue)
+                            if sanitized != newValue {
+                                amountText = sanitized
+                            }
+                        }
 
                     if !amountText.isEmpty {
                         Button(action: { amountText = "" }) {
@@ -1229,6 +1254,15 @@ struct HoldingAmountModalView: View {
                         .foregroundColor(.secondary)
                         .padding(.top, 2)
                 }
+
+                HStack(spacing: 4) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 10))
+                    Text("Bàn phím hỗ trợ cả dấu phẩy (,) và chấm (.), tự động chuyển thành thập phân chuẩn.")
+                        .font(.system(size: 10))
+                }
+                .foregroundColor(.secondary.opacity(0.75))
+                .padding(.top, 2)
             }
             .padding(.bottom, 18)
 
@@ -1291,6 +1325,35 @@ struct HoldingAmountModalView: View {
                 isFieldFocused = true
             }
         }
+        #if os(iOS)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Button(action: {
+                    if !amountText.contains(".") {
+                        amountText = amountText.isEmpty ? "0." : amountText + "."
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "circle.fill")
+                            .font(.system(size: 6))
+                        Text("Dấu chấm (.)")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.12))
+                    .cornerRadius(6)
+                }
+
+                Spacer()
+
+                Button("Xong") {
+                    isFieldFocused = false
+                }
+                .font(.system(size: 14, weight: .bold))
+            }
+        }
+        #endif
     }
 }
 
