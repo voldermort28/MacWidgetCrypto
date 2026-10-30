@@ -52,13 +52,11 @@ struct ContentView: View {
     @State private var isLoadingDetail: Bool = false
     @State private var hoveredPoint: KlinePoint? = nil
 
-    // Sheets & Alerts
+    // Sheets & Modals
     @State private var showingAddCoinSheet = false
     @State private var showingSyncSheet = false
     @State private var showingLogsSheet = false
-    @State private var showingEditHoldingAlert = false
-    @State private var coinToEdit: Coin? = nil
-    @State private var editAmountInput: String = ""
+    @State private var activeHoldingTarget: HoldingTarget? = nil
 
     @State private var autoRefreshTimer: Timer? = nil
 
@@ -78,34 +76,70 @@ struct ContentView: View {
     }
 
     var body: some View {
-        Group {
-            #if os(macOS)
-            NavigationSplitView {
-                sidebarView
-                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 400)
-            } detail: {
-                detailView
-                    .frame(minWidth: 520, idealWidth: 700)
-            }
-            #else
-            NavigationView {
-                ZStack {
+        ZStack {
+            Group {
+                #if os(macOS)
+                NavigationSplitView {
                     sidebarView
-
-                    NavigationLink(
-                        destination: detailView,
-                        isActive: $navigateToDetail
-                    ) {
-                        EmptyView()
-                    }
-                    .hidden()
+                        .frame(minWidth: 300, idealWidth: 340, maxWidth: 400)
+                } detail: {
+                    detailView
+                        .frame(minWidth: 520, idealWidth: 700)
                 }
-                .navigationTitle("MacCrypto")
-                .navigationBarTitleDisplayMode(.inline)
+                #else
+                NavigationView {
+                    ZStack {
+                        sidebarView
+
+                        NavigationLink(
+                            destination: detailView,
+                            isActive: $navigateToDetail
+                        ) {
+                            EmptyView()
+                        }
+                        .hidden()
+                    }
+                    .navigationTitle("MacCrypto")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+                .navigationViewStyle(StackNavigationViewStyle())
+                #endif
             }
-            .navigationViewStyle(StackNavigationViewStyle())
-            #endif
+
+            // Custom Holding Amount Modal Overlay for ContentView
+            if let target = activeHoldingTarget {
+                Color.black.opacity(0.65)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            activeHoldingTarget = nil
+                        }
+                    }
+
+                HoldingAmountModalView(
+                    target: target,
+                    currentAmount: portfolioManager.getAmount(for: target.coinId),
+                    onSave: { amount in
+                        portfolioManager.updateHolding(coinId: target.coinId, amount: amount)
+                        loadData(isBackgroundRefresh: true)
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            activeHoldingTarget = nil
+                        }
+                    },
+                    onCancel: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            activeHoldingTarget = nil
+                        }
+                    }
+                )
+                .contentShape(Rectangle())
+                .onTapGesture { }
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+                .zIndex(100)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: activeHoldingTarget != nil)
         .sheet(isPresented: $showingAddCoinSheet) {
             AddCoinView {
                 showingAddCoinSheet = false
@@ -119,13 +153,6 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingLogsSheet) {
             LogsView()
-        }
-        .alert("Số lượng coin nắm giữ", isPresented: $showingEditHoldingAlert) {
-            TextField("Nhập số lượng (vd: 1.5)", text: $editAmountInput)
-            Button("Lưu", action: saveHoldingAmount)
-            Button("Hủy", role: .cancel) { }
-        } message: {
-            Text("Nhập số lượng coin bạn đang sở hữu trong ví:")
         }
         .onAppear(perform: handleOnAppear)
         .onDisappear(perform: stopTimers)
@@ -252,20 +279,7 @@ struct ContentView: View {
         .background(Color(red: 0.10, green: 0.10, blue: 0.12))
     }
 
-    private func saveHoldingAmount() {
-        let coinId: String
-        if let c = coinToEdit {
-            coinId = c.id
-        } else if case .coin(let id) = selectedTarget {
-            coinId = id
-        } else {
-            return
-        }
-        if let parsed = parseCryptoAmount(editAmountInput), parsed >= 0 {
-            portfolioManager.updateHolding(coinId: coinId, amount: parsed)
-            loadData(isBackgroundRefresh: true)
-        }
-    }
+
 
     private func handleOnAppear() {
         let cached = CryptoService.shared.getCachedCoins()
@@ -335,9 +349,13 @@ struct ContentView: View {
                 showPercentage.toggle()
             },
             onEditAmount: {
-                coinToEdit = coin
-                editAmountInput = amount > 0 ? (amount.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", amount) : String(amount)) : ""
-                showingEditHoldingAlert = true
+                activeHoldingTarget = HoldingTarget(
+                    coinId: coin.id,
+                    symbol: coin.symbol,
+                    name: coin.name,
+                    currentPrice: coin.currentPrice,
+                    isNew: false
+                )
             },
             onDelete: {
                 deleteCoin(coin)
@@ -549,9 +567,15 @@ struct ContentView: View {
                     .font(.subheadline.bold())
                     .foregroundColor(.white)
                 Button("Sửa số lượng") {
-                    coinToEdit = coin
-                    editAmountInput = amount > 0 ? (amount.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", amount) : String(amount)) : ""
-                    showingEditHoldingAlert = true
+                    if let c = coin {
+                        activeHoldingTarget = HoldingTarget(
+                            coinId: c.id,
+                            symbol: c.symbol,
+                            name: c.name,
+                            currentPrice: c.currentPrice,
+                            isNew: false
+                        )
+                    }
                 }
                 .font(.caption2.bold())
                 .foregroundColor(.blue)
@@ -674,33 +698,48 @@ struct ContentView: View {
         let val = amount * coin.currentPrice
         let share = totalVal > 0 ? (val / totalVal) * 100.0 : 0.0
 
-        return VStack(spacing: 4) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(coin.symbol.uppercased())-USD")
-                        .font(.subheadline.bold())
-                        .foregroundColor(.white)
-                    Text(coin.name)
-                        .font(.caption2)
+        return Button(action: {
+            activeHoldingTarget = HoldingTarget(
+                coinId: coin.id,
+                symbol: coin.symbol,
+                name: coin.name,
+                currentPrice: coin.currentPrice,
+                isNew: false
+            )
+        }) {
+            VStack(spacing: 4) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(coin.symbol.uppercased())-USD")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.white)
+                        Text(coin.name)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Text("\(amount.formattedAmount()) \(coin.symbol.uppercased())")
+                        .font(.caption.weight(.semibold))
                         .foregroundColor(.secondary)
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(val.formattedCurrency())
+                            .font(.subheadline.bold())
+                            .foregroundColor(.white)
+                        Text(String(format: "%.1f%% danh mục", share))
+                            .font(.caption2)
+                            .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
+                    }
+                    Image(systemName: "pencil.circle")
+                        .font(.caption)
+                        .foregroundColor(.blue.opacity(0.8))
+                        .padding(.leading, 4)
                 }
-                Spacer()
-                Text("\(amount.formattedAmount()) \(coin.symbol.uppercased())")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(val.formattedCurrency())
-                        .font(.subheadline.bold())
-                        .foregroundColor(.white)
-                    Text(String(format: "%.1f%% danh mục", share))
-                        .font(.caption2)
-                        .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
-                }
+                .padding(.vertical, 4)
+                Divider().background(Color.white.opacity(0.06))
             }
-            .padding(.vertical, 4)
-            Divider().background(Color.white.opacity(0.06))
         }
+        .buttonStyle(PlainButtonStyle())
     }
 
     private var heldCountText: String {
@@ -1053,6 +1092,208 @@ struct SidebarCoinRowView: View {
     }
 }
 
+// MARK: - Holding Target & Modal Component
+struct HoldingTarget: Identifiable, Equatable {
+    var id: String { coinId }
+    let coinId: String
+    let symbol: String
+    let name: String
+    let currentPrice: Double?
+    let isNew: Bool
+}
+
+struct HoldingAmountModalView: View {
+    let target: HoldingTarget
+    let currentAmount: Double
+    let onSave: (Double) -> Void
+    let onCancel: () -> Void
+
+    @State private var amountText: String
+    @FocusState private var isFieldFocused: Bool
+
+    init(target: HoldingTarget, currentAmount: Double, onSave: @escaping (Double) -> Void, onCancel: @escaping () -> Void) {
+        self.target = target
+        self.currentAmount = currentAmount
+        self.onSave = onSave
+        self.onCancel = onCancel
+        let initial = currentAmount > 0 ? (currentAmount.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", currentAmount) : String(currentAmount)) : ""
+        _amountText = State(initialValue: initial)
+    }
+
+    private var parsedValue: Double {
+        parseCryptoAmount(amountText) ?? 0.0
+    }
+
+    private var estimatedValue: Double? {
+        guard let price = target.currentPrice, price > 0, parsedValue > 0 else { return nil }
+        return parsedValue * price
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(alignment: .top) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.blue.opacity(0.18))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: target.isNew ? "plus.circle.fill" : "wallet.pass.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.blue)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(target.isNew ? "Thêm \(target.symbol.uppercased()) vào ví" : "Sửa số lượng \(target.symbol.uppercased())")
+                            .font(.headline)
+                            .foregroundColor(.white)
+
+                        HStack(spacing: 4) {
+                            Text(target.name)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            if let price = target.currentPrice, price > 0 {
+                                Text("• \(price.formattedCurrency())")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
+                            }
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Button(action: onCancel) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            .padding(.bottom, 16)
+
+            // Input Box
+            VStack(alignment: .leading, spacing: 6) {
+                Text("SỐ LƯỢNG NẮM GIỮ")
+                    .font(.caption2.bold())
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 8) {
+                    TextField("0.0", text: $amountText)
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
+                        .focused($isFieldFocused)
+                        .textFieldStyle(PlainTextFieldStyle())
+
+                    if !amountText.isEmpty {
+                        Button(action: { amountText = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
+                    Text(target.symbol.uppercased())
+                        .font(.subheadline.bold())
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(6)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.black.opacity(0.35))
+                .cornerRadius(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(isFieldFocused ? Color.blue : Color.white.opacity(0.12), lineWidth: 1.5)
+                )
+
+                // Subtitle / Valuation
+                if let est = estimatedValue {
+                    HStack(spacing: 4) {
+                        Image(systemName: "dollarsign.circle.fill")
+                            .font(.caption2)
+                        Text("Ước tính giá trị: \(est.formattedCurrency())")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
+                    .padding(.top, 2)
+                } else {
+                    Text(target.isNew ? "Nhập số coin bạn sở hữu hoặc bấm nút bên dưới nếu chỉ muốn theo dõi giá." : "Đặt số lượng là 0 nếu bạn không còn sở hữu coin này.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
+                }
+            }
+            .padding(.bottom, 18)
+
+            // Action Buttons
+            VStack(spacing: 8) {
+                Button(action: {
+                    onSave(parsedValue)
+                }) {
+                    Text(target.isNew ? (parsedValue > 0 ? "Lưu vào ví (\(parsedValue.formattedAmount()) \(target.symbol.uppercased()))" : "Xác nhận thêm") : "Lưu thay đổi")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                if target.isNew {
+                    Button(action: {
+                        onSave(0.0)
+                    }) {
+                        Text("Chỉ theo dõi giá (Số lượng: 0)")
+                            .font(.caption.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(Color.white.opacity(0.08))
+                            .foregroundColor(.secondary)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                } else if currentAmount > 0 {
+                    Button(action: {
+                        onSave(0.0)
+                    }) {
+                        Text("Đặt về 0 (Chỉ theo dõi)")
+                            .font(.caption.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(Color.red.opacity(0.15))
+                            .foregroundColor(Color(red: 1.0, green: 0.27, blue: 0.23))
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+        .padding(18)
+        .background(Color(red: 0.14, green: 0.14, blue: 0.17))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.5), radius: 25, x: 0, y: 12)
+        .frame(maxWidth: 380)
+        .padding(.horizontal, 24)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isFieldFocused = true
+            }
+        }
+    }
+}
+
 struct AddCoinView: View {
     @Environment(\.presentationMode) var presentationMode
     @ObservedObject var portfolioManager = PortfolioManager.shared
@@ -1060,40 +1301,82 @@ struct AddCoinView: View {
     @State private var searchResults: [CoinSearchResult] = []
     @State private var isSearching = false
     @State private var hasSearched = false
+    @State private var activeHoldingTarget: HoldingTarget? = nil
     var onCoinAdded: () -> Void
 
     var body: some View {
-        #if os(iOS)
-        NavigationView {
-            coinListContent
-                .navigationTitle("Thêm Coin mới")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Đóng") {
-                            presentationMode.wrappedValue.dismiss()
+        ZStack {
+            #if os(iOS)
+            NavigationView {
+                coinListContent
+                    .navigationTitle("Thêm Coin mới")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Đóng") {
+                                presentationMode.wrappedValue.dismiss()
+                            }
                         }
                     }
-                }
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
-        #else
-        VStack(spacing: 0) {
-            HStack {
-                Text("Thêm Coin mới")
-                    .font(.headline)
-                Spacer()
-                Button("Đóng") {
-                    presentationMode.wrappedValue.dismiss()
-                }
             }
-            .padding()
+            .navigationViewStyle(StackNavigationViewStyle())
+            #else
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Thêm Coin mới")
+                        .font(.headline)
+                    Spacer()
+                    Button("Đóng") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+                .padding()
 
-            Divider()
+                Divider()
 
-            coinListContent
+                coinListContent
+            }
+            .frame(minWidth: 480, idealWidth: 540, minHeight: 520, idealHeight: 600)
+            #endif
+
+            // Holding Amount Modal Overlay in AddCoinView
+            if let target = activeHoldingTarget {
+                Color.black.opacity(0.65)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            activeHoldingTarget = nil
+                        }
+                    }
+
+                HoldingAmountModalView(
+                    target: target,
+                    currentAmount: portfolioManager.getAmount(for: target.coinId),
+                    onSave: { amount in
+                        if amount > 0 {
+                            portfolioManager.updateHolding(coinId: target.coinId, amount: amount)
+                        } else {
+                            portfolioManager.addTrackedCoin(id: target.coinId)
+                            portfolioManager.updateHolding(coinId: target.coinId, amount: 0)
+                        }
+                        onCoinAdded()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            activeHoldingTarget = nil
+                        }
+                    },
+                    onCancel: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            activeHoldingTarget = nil
+                        }
+                    }
+                )
+                .contentShape(Rectangle())
+                .onTapGesture { }
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+                .zIndex(100)
+            }
         }
-        .frame(minWidth: 480, idealWidth: 540, minHeight: 520, idealHeight: 600)
-        #endif
+        .animation(.easeInOut(duration: 0.2), value: activeHoldingTarget != nil)
     }
 
     private var coinListContent: some View {
@@ -1144,26 +1427,68 @@ struct AddCoinView: View {
                 } else if !searchResults.isEmpty {
                     Section(header: Text("Kết quả tìm kiếm (\(searchResults.count))")) {
                         ForEach(searchResults) { result in
+                            let isTracked = portfolioManager.isTracking(id: result.id)
+                            let cachedPrice = CryptoService.shared.getCachedCoins().first(where: {
+                                $0.id.lowercased() == result.id.lowercased() || $0.symbol.uppercased() == result.symbol.uppercased()
+                            })?.currentPrice
+                            let currentAmt = portfolioManager.getAmount(for: result.id)
+
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(result.name)
                                         .font(.headline)
-                                    Text(result.symbol.uppercased())
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
+                                    HStack(spacing: 6) {
+                                        Text(result.symbol.uppercased())
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                        if currentAmt > 0 {
+                                            Text("• Đang có \(currentAmt.formattedAmount())")
+                                                .font(.caption.bold())
+                                                .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
+                                        }
+                                    }
                                 }
                                 Spacer()
-                                if portfolioManager.isTracking(id: result.id) {
-                                    Label("Đã thêm", systemImage: "checkmark.circle.fill")
-                                        .foregroundColor(.green)
-                                        .font(.subheadline.bold())
+                                if isTracked {
+                                    HStack(spacing: 8) {
+                                        Label("Đã thêm", systemImage: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                            .font(.caption.bold())
+
+                                        Button("Sửa SL") {
+                                            activeHoldingTarget = HoldingTarget(
+                                                coinId: result.id,
+                                                symbol: result.symbol,
+                                                name: result.name,
+                                                currentPrice: cachedPrice,
+                                                isNew: false
+                                            )
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
                                 } else {
                                     Button("Thêm") {
-                                        portfolioManager.addTrackedCoin(id: result.id)
-                                        onCoinAdded()
+                                        activeHoldingTarget = HoldingTarget(
+                                            coinId: result.id,
+                                            symbol: result.symbol,
+                                            name: result.name,
+                                            currentPrice: cachedPrice,
+                                            isNew: true
+                                        )
                                     }
                                     .buttonStyle(.borderedProminent)
                                 }
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                activeHoldingTarget = HoldingTarget(
+                                    coinId: result.id,
+                                    symbol: result.symbol,
+                                    name: result.name,
+                                    currentPrice: cachedPrice,
+                                    isNew: !isTracked
+                                )
                             }
                             .padding(.vertical, 4)
                         }
@@ -1186,26 +1511,68 @@ struct AddCoinView: View {
 
                 Section(header: Text("Coin phổ biến")) {
                     ForEach(CryptoService.popularCoins, id: \.id) { popular in
+                        let isTracked = portfolioManager.isTracking(id: popular.id)
+                        let cachedPrice = CryptoService.shared.getCachedCoins().first(where: {
+                            $0.id.lowercased() == popular.id.lowercased() || $0.symbol.uppercased() == popular.symbol.uppercased()
+                        })?.currentPrice
+                        let currentAmt = portfolioManager.getAmount(for: popular.id)
+
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(popular.name)
                                     .font(.headline)
-                                Text(popular.symbol)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                                HStack(spacing: 6) {
+                                    Text(popular.symbol)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    if currentAmt > 0 {
+                                        Text("• Đang có \(currentAmt.formattedAmount())")
+                                            .font(.caption.bold())
+                                            .foregroundColor(Color(red: 0.19, green: 0.82, blue: 0.35))
+                                    }
+                                }
                             }
                             Spacer()
-                            if portfolioManager.isTracking(id: popular.id) {
-                                Label("Đã thêm", systemImage: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                    .font(.subheadline.bold())
+                            if isTracked {
+                                HStack(spacing: 8) {
+                                    Label("Đã thêm", systemImage: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                        .font(.caption.bold())
+
+                                    Button("Sửa SL") {
+                                        activeHoldingTarget = HoldingTarget(
+                                            coinId: popular.id,
+                                            symbol: popular.symbol,
+                                            name: popular.name,
+                                            currentPrice: cachedPrice,
+                                            isNew: false
+                                        )
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
                             } else {
                                 Button("Thêm") {
-                                    portfolioManager.addTrackedCoin(id: popular.id)
-                                    onCoinAdded()
+                                    activeHoldingTarget = HoldingTarget(
+                                        coinId: popular.id,
+                                        symbol: popular.symbol,
+                                        name: popular.name,
+                                        currentPrice: cachedPrice,
+                                        isNew: true
+                                    )
                                 }
                                 .buttonStyle(.borderedProminent)
                             }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            activeHoldingTarget = HoldingTarget(
+                                coinId: popular.id,
+                                symbol: popular.symbol,
+                                name: popular.name,
+                                currentPrice: cachedPrice,
+                                isNew: !isTracked
+                            )
                         }
                         .padding(.vertical, 4)
                     }
