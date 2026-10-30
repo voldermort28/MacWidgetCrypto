@@ -101,6 +101,32 @@ struct ContentView: View {
                     }
                     .navigationTitle("MacCrypto")
                     .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button(action: { showingSyncSheet = true }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                    Text("Đồng bộ")
+                                        .font(.system(size: 14, weight: .semibold))
+                                }
+                            }
+                        }
+                        ToolbarItemGroup(placement: .navigationBarTrailing) {
+                            Button(action: { showingLogsSheet = true }) {
+                                Image(systemName: "terminal")
+                                    .font(.system(size: 14))
+                            }
+                            Button(action: { loadData(isBackgroundRefresh: false) }) {
+                                if isLoading {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 14))
+                                }
+                            }
+                        }
+                    }
                 }
                 .navigationViewStyle(StackNavigationViewStyle())
                 #endif
@@ -237,43 +263,71 @@ struct ContentView: View {
             Spacer(minLength: 0)
 
             // Bottom Action Strip
-            HStack {
+            HStack(spacing: 8) {
                 Button(action: { showingAddCoinSheet = true }) {
-                    Label("Thêm Coin", systemImage: "plus")
-                        .font(.caption.bold())
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("Thêm Coin")
+                            .font(.system(size: 12, weight: .bold))
+                    }
                 }
-                .buttonStyle(BorderlessButtonStyle())
+                .buttonStyle(PlainButtonStyle())
+                .foregroundColor(.accentColor)
 
                 Spacer()
 
                 Button(action: { showingSyncSheet = true }) {
-                    Image(systemName: "arrow.triangle.2.circlepath.icloud")
-                        .font(.caption)
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Đồng bộ")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.white.opacity(0.10))
+                    .cornerRadius(6)
                 }
-                .buttonStyle(BorderlessButtonStyle())
-                .help("Đồng bộ danh mục")
+                .buttonStyle(PlainButtonStyle())
+                .foregroundColor(.primary)
+                .help("Đồng bộ danh mục giữa các thiết bị")
 
                 Button(action: { showingLogsSheet = true }) {
                     Image(systemName: "terminal")
-                        .font(.caption)
+                        .font(.system(size: 12))
+                        .padding(6)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(6)
                 }
-                .buttonStyle(BorderlessButtonStyle())
+                .buttonStyle(PlainButtonStyle())
+                .foregroundColor(.secondary)
                 .help("Xem Logs")
 
                 if isLoading {
                     ProgressView()
                         .controlSize(.small)
+                        .padding(6)
                 } else {
                     Button(action: { loadData(isBackgroundRefresh: false) }) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.caption)
+                            .font(.system(size: 12))
+                            .padding(6)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(6)
                     }
-                    .buttonStyle(BorderlessButtonStyle())
+                    .buttonStyle(PlainButtonStyle())
+                    .foregroundColor(.secondary)
                     .help("Làm mới giá từ Binance")
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            #if os(iOS)
+            .padding(.bottom, 12)
+            #else
+            .padding(.bottom, 8)
+            #endif
             .background(Color.white.opacity(0.04))
         }
         .background(Color(red: 0.10, green: 0.10, blue: 0.12))
